@@ -1,0 +1,27 @@
+@PACKAGE_INIT@
+
+# The version, with the release-stage label of a pre-release build (applications show it, e.g. in
+# --version).
+set(dvv_components_VERSION_STRING "@dvv_components_VERSION_STRING@")
+
+include(CMakeFindDependencyMacro)
+find_dependency(dvv_base @dvv_base_MIN_VERSION@)
+find_dependency(dvv_registry @dvv_registry_MIN_VERSION@)
+find_dependency(dvv_platform @dvv_platform_MIN_VERSION@)
+# dvv_gpu needs the pinned Vulkan-Headers of the third-party prefix in CMAKE_PREFIX_PATH.
+find_dependency(dvv_gpu @dvv_gpu_MIN_VERSION@)
+find_dependency(dvv_media @dvv_media_MIN_VERSION@)
+
+include("${CMAKE_CURRENT_LIST_DIR}/dvv_componentsTargets.cmake")
+
+# dvv_add_component() and dvv_components_link(), and the component libraries this package was built
+# with (its DVV_COMPONENT_<ID> options), which dvv_components_link() links as whole archives.
+set(DVV_COMPONENTS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+include("${CMAKE_CURRENT_LIST_DIR}/DvvComponent.cmake")
+get_property(_dvv_components_listed GLOBAL PROPERTY DVV_COMPONENTS_PACKAGE_LISTED)
+if(NOT _dvv_components_listed)
+    set_property(GLOBAL PROPERTY DVV_COMPONENTS_PACKAGE_LISTED TRUE)
+    set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_LIBRARIES @DVV_COMPONENTS_INSTALLED_LIBRARIES@)
+endif()
+
+check_required_components(dvv_components)
