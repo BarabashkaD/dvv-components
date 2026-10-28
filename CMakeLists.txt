@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(dvv_components VERSION 0.1.1 DESCRIPTION "dvv component libraries" LANGUAGES CXX)
+project(dvv_components VERSION 0.1.2 DESCRIPTION "dvv component libraries" LANGUAGES CXX)
 # Version string; a pre-release build adds its release-stage label.
 set(dvv_components_VERSION_STRING "${PROJECT_VERSION}")
 

@@ -147,6 +147,9 @@ Result<ffmpeg::FormatContextPtr> openFormat(const std::string& url) {
     return format;
 }
 
+// The decoder thread_count of setDecoderThreadsForTest (0: FFmpeg chooses).
+std::atomic<int> decoder_threads_for_test{0};
+
 }  // namespace
 
 // ---- open (steps 2-8) ----
@@ -207,7 +210,8 @@ Result<std::unique_ptr<ContainerSupplier>> ContainerSupplier::open(const std::st
         result < 0) {
         return std::unexpected(ffmpeg::ffmpegError("avcodec_parameters_to_context", result));
     }
-    supplier->codec_->thread_count = 0;
+    // 0: FFmpeg chooses (1 only in the single-thread test).
+    supplier->codec_->thread_count = decoder_threads_for_test.load(std::memory_order_relaxed);
     supplier->codec_->pkt_timebase = chosen.time_base;
     if (chosen.codecpar->codec_id == AV_CODEC_ID_FFV1 && chosen.codecpar->extradata_size > 0) {
         // FFV1 reports a damaged slice (slice CRC mismatch) only in its log. With slice
@@ -302,6 +306,10 @@ const AVFrame& ContainerSupplier::firstFrame() const noexcept {
 
 AVRational ContainerSupplier::guessedFrameRate() const noexcept {
     return ffmpeg::api().av_guess_frame_rate(format_.get(), format_->streams[stream_], nullptr);
+}
+
+int ContainerSupplier::decoderThreads() const noexcept {
+    return codec_->thread_count;
 }
 
 const AVCodecParameters& ContainerSupplier::codecParameters() const noexcept {
@@ -628,6 +636,10 @@ Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(const std::filesyst
     uri.path = media::utf8FromPath(path);
     DVV_TRY(OpenedContainer opened, openContainer(uri));
     return std::move(opened.worker);
+}
+
+void setDecoderThreadsForTest(int threads) noexcept {
+    decoder_threads_for_test.store(threads, std::memory_order_relaxed);
 }
 
 }  // namespace dvv::components::detail
