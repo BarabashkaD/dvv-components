@@ -6,6 +6,12 @@ the dvv rules: compatible = the same major and at least the minimum version, als
 changes only in a new major, after a deprecation. This file is the release notes (there are no
 GitHub Releases).
 
+## [0.1.1] - 2026-10-28
+
+### Fixed
+- ThreadSanitizer runs suppress races inside the uninstrumented FFmpeg libraries
+  (`tests/tsan.supp`, used by the FFmpeg tests of the thread-sanitizer preset only).
+
 ## [0.1.0] - 2026-10-28
 
 First versioned release.

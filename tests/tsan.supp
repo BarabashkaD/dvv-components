@@ -1,0 +1,11 @@
+# ThreadSanitizer suppressions for the FFmpeg tests (used by the thread-sanitizer preset only).
+# FFmpeg's shared libraries are not instrumented: libavcodec's slice and frame threads synchronize
+# their own buffers with primitives ThreadSanitizer cannot see (atomics and progress flags in the
+# uninstrumented code), so valid decoding is reported as races between FFmpeg's threads (memset,
+# free and av_buffer writes inside libavcodec and libavutil), and as races with the dvv code that
+# reads a decoded frame after FFmpeg has handed it over. A report is suppressed when the stack of
+# either racing access (or of the allocation of the memory) has a frame inside these libraries, so a
+# race between dvv code and FFmpeg is hidden as well; races between two accesses in dvv code are
+# still reported.
+race:libavcodec.so
+race:libavutil.so
