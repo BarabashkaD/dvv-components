@@ -137,7 +137,8 @@ set_tests_properties(dvv_components.lavfi_fixtures PROPERTIES
 set(ffmpeg_test_environment ${DVV_TEST_ENVIRONMENT}
     "DVV_TEST_FFMPEG_RUNTIME_DIR=set:${DVV_FFMPEG_RUNTIME_DIR}"
     "DVV_TEST_FFMPEG_PROGRAM=set:${DVV_FFMPEG_PROGRAM}")
-# The FFmpeg libraries are not instrumented; see tsan.supp.
+# The FFmpeg libraries are not instrumented; see tsan.supp (also for the loader paths that a test
+# under it must not reach).
 if(DVV_SANITIZE STREQUAL "thread")
     list(APPEND ffmpeg_test_environment
          "TSAN_OPTIONS=set:suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tsan.supp")

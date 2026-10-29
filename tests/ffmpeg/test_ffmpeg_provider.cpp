@@ -667,8 +667,10 @@ TEST_SUITE("ffmpeg") {
 }
 
 // Its own CTest entry, which the thread-sanitizer preset runs with no suppressions: the decoders
-// start no FFmpeg threads, so every report would come from our own threading (the worker, the
-// ring, the store and pools, the log callback).
+// start no FFmpeg threads, so a report comes from our own threading on the container path (the
+// worker, the ring, the store, the cpu pool), including two dvv threads that use one FFmpeg context
+// without our lock. Not covered here: the lavfi path (libavfilter's own threads) and the log
+// callback on FFmpeg threads (checked in the "ffmpeg" suite).
 TEST_SUITE("ffmpeg-single-thread") {
     TEST_CASE("ffmpeg: single-thread decoding has no races in our threading") {
         namespace detail = dvv::components::detail;

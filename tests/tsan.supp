@@ -5,11 +5,21 @@
 # memcpy, malloc and free inside libavcodec and libavutil), and valid decoding is reported as races
 # between FFmpeg's threads and with the dvv code that reads a decoded frame after FFmpeg has handed
 # it over.
-# called_from_lib: makes ThreadSanitizer ignore the memory accesses of every intercepted call made
-# from code inside the named library (matched against the path of the loaded file, which the loader
-# opens as e.g. libavcodec.so.62). Unlike race:, it keeps the instrumented code that FFmpeg's
-# threads run checked (today the dvv log callback; also any later AVIO or get_buffer2 callback).
-# No race: entry is needed: the FFmpeg suites report nothing else with this list.
+# called_from_lib: makes ThreadSanitizer skip every intercepted call made from code inside the
+# named library (a substring of the loaded file's path, e.g. libavcodec.so.62): its memory accesses
+# and its synchronization (mutexes, condition variables, semaphores). Thread creation and join stay
+# visible. Unlike race:, it does not hide races in dvv code on memory FFmpeg allocated or on threads
+# FFmpeg created, so dvv code that FFmpeg's threads run (today the dvv log callback) stays checked.
+# - A race between dvv code and an FFmpeg access stays hidden (seen without suppressions: the
+#   copyAndPublish memcpy against an av_buffer_allocz memset on a frame thread, a hand-over through
+#   FFmpeg's atomics). dvv_components.ffmpeg_single_thread checks the container path without
+#   suppressions.
+# - FFmpeg's locks are invisible: a callback that FFmpeg's threads run must synchronize with dvv
+#   threads through dvv primitives (atomics or dvv mutexes), or it is reported as a race.
+# - ThreadSanitizer aborts the process when a matched library is unloaded or one entry matches two
+#   loaded files: a test that uses this file must not reach the loader's paths that close FFmpeg
+#   libraries again (a partial, refused or lavfi-incomplete FFmpeg build).
+# With this list the FFmpeg suites report nothing, so no race: entry is needed.
 called_from_lib:libavutil.so
 called_from_lib:libavcodec.so
 called_from_lib:libavformat.so
