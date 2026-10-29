@@ -12,6 +12,9 @@ GitHub Releases).
 - A single-thread FFmpeg decode test (`dvv_components.ffmpeg_single_thread`, label `ffmpeg`): the
   decoders start no FFmpeg threads and the thread-sanitizer preset runs it without suppressions.
 
+### Changed
+- LICENSE: the copyright line names BarabashkaD.
+
 ### Fixed
 - The ThreadSanitizer suppressions for FFmpeg (`tests/tsan.supp`) use `called_from_lib:` for the
   loaded FFmpeg libraries instead of `race:`, so races in dvv code that FFmpeg's threads run (the
