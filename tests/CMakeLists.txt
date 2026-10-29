@@ -137,7 +137,8 @@ set_tests_properties(dvv_components.lavfi_fixtures PROPERTIES
 set(ffmpeg_test_environment ${DVV_TEST_ENVIRONMENT}
     "DVV_TEST_FFMPEG_RUNTIME_DIR=set:${DVV_FFMPEG_RUNTIME_DIR}"
     "DVV_TEST_FFMPEG_PROGRAM=set:${DVV_FFMPEG_PROGRAM}")
-# The FFmpeg libraries are not instrumented; see tsan.supp.
+# The FFmpeg libraries are not instrumented; see tsan.supp (also for the loader paths that a test
+# under it must not reach).
 if(DVV_SANITIZE STREQUAL "thread")
     list(APPEND ffmpeg_test_environment
          "TSAN_OPTIONS=set:suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tsan.supp")
@@ -174,6 +175,23 @@ endforeach()
 # The provider cases read the container and lavfi fixtures.
 set_tests_properties(dvv_components.ffmpeg PROPERTIES
     FIXTURES_REQUIRED "dvv_components_ffmpeg_fixtures;dvv_components_lavfi_fixtures")
+# The single-thread decode case: its decoders start no FFmpeg threads, so the thread-sanitizer
+# preset runs it without tsan.supp (TSAN_OPTIONS unset) and it checks our own threading.
+set(single_thread_environment ${ffmpeg_test_environment})
+list(FILTER single_thread_environment EXCLUDE REGEX "^TSAN_OPTIONS=")
+list(APPEND single_thread_environment "TSAN_OPTIONS=unset:"
+     "DVV_FFMPEG_DIR=set:${DVV_FFMPEG_RUNTIME_DIR}" "DVV_FFMPEG_FIXTURES=set:${ffmpeg_fixtures_dir}"
+     "DVV_FFMPEG_TEST_MODE=set:available")
+add_test(NAME dvv_components.ffmpeg_single_thread
+         COMMAND dvv_components_ffmpeg_tests --test-suite=ffmpeg-single-thread)
+set_tests_properties(dvv_components.ffmpeg_single_thread PROPERTIES
+    LABELS ffmpeg
+    FIXTURES_REQUIRED dvv_components_ffmpeg_fixtures
+    FAIL_REGULAR_EXPRESSION "test cases: +0 \\|"
+    SKIP_RETURN_CODE 77
+    TIMEOUT 600
+    ENVIRONMENT DVV_LEAK_CHECK=fail
+    ENVIRONMENT_MODIFICATION "${single_thread_environment}")
 
 # FFmpeg oracle (design v2 §8.3): fixtures from the prefix's ffmpeg program, compared in C++ through
 # our raw provider. Non-sanitizer builds only (§8.1: the sanitizers already cover unit and ffmpeg).

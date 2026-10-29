@@ -53,6 +53,8 @@ public:
     [[nodiscard]] std::int64_t scannedPackets() const noexcept { return scanned_; }
     // Seeks and restarts since open (a test seam: requests that decode on add none).
     [[nodiscard]] std::int64_t resets() const noexcept { return resets_; }
+    // The decoder's thread_count after avcodec_open2 (FFmpeg's choice when it was 0; tests).
+    [[nodiscard]] int decoderThreads() const noexcept;
 
     // Test seam (an injected reopen failure): later reopens open `path_utf8` instead.
     void setPathForTest(const std::string& path_utf8) { url_ = "file:" + path_utf8; }
@@ -144,5 +146,9 @@ struct OpenedContainer {
 // Test seam (stop test): the worker of a file opened with the same code as open (no query).
 [[nodiscard]] Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(
     const std::filesystem::path& path);
+
+// Test seam (the single-thread TSan case): the decoder thread_count of every later open; 0 (the
+// default) lets FFmpeg choose, 1 starts no FFmpeg threads. Thread-safe.
+void setDecoderThreadsForTest(int threads) noexcept;
 
 }  // namespace dvv::components::detail

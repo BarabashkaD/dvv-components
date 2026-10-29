@@ -665,3 +665,59 @@ TEST_SUITE("ffmpeg") {
         CHECK(dvv::components::detail::checkFrame(*frame, 7, desc, AV_PIX_FMT_YUV422P).has_value());
     }
 }
+
+// Its own CTest entry, which the thread-sanitizer preset runs with no suppressions: the decoders
+// start no FFmpeg threads, so a report comes from our own threading on the container path (the
+// worker, the ring, the store, the cpu pool), including two dvv threads that use one FFmpeg context
+// without our lock. Not covered here: the lavfi path (libavfilter's own threads) and the log
+// callback on FFmpeg threads (checked in the "ffmpeg" suite).
+TEST_SUITE("ffmpeg-single-thread") {
+    TEST_CASE("ffmpeg: single-thread decoding has no races in our threading") {
+        namespace detail = dvv::components::detail;
+        struct Restore {
+            Restore() { detail::setDecoderThreadsForTest(1); }
+            ~Restore() { detail::setDecoderThreadsForTest(0); }
+            Restore(const Restore&) = delete;
+            Restore& operator=(const Restore&) = delete;
+            Restore(Restore&&) = delete;
+            Restore& operator=(Restore&&) = delete;
+        } restore;
+        for (const std::string_view file : {SEQ, std::string_view("ffv1_yuv420p10le.mkv")}) {
+            CAPTURE(file);
+            auto opened = detail::ContainerSupplier::open(fixturePath(file), running());
+            REQUIRE_MESSAGE(opened.has_value(), opened.error().describe());
+            CHECK((*opened)->decoderThreads() == 1);
+        }
+
+        FfmpegHarness harness;
+        // Sequential: forward, then backward (each step back restarts the stream).
+        const auto seq_hashes = referenceHashes("seq.framemd5");
+        REQUIRE(seq_hashes.size() == 30);
+        const auto seq = harness.open(fixtureUri(SEQ));
+        std::vector<std::int64_t> order = range(0, 30);
+        for (const std::int64_t index : {29, 3, 17, 0}) {
+            order.push_back(index);
+        }
+        checkFrames(harness, seq, SEQ, seq_hashes, order);
+
+        // Indexed: concurrent produce calls from one store on the cpu pool.
+        const auto hashes = referenceHashes("ffv1_yuv420p10le.framemd5");
+        const auto source = harness.open(fixtureUri("ffv1_yuv420p10le.mkv"));
+        const media::OriginId origin = harness.origin(source);
+        std::vector<dvv::Task<dvv::Result<media::OriginalRead>>> tasks;
+        for (std::int64_t index = 9; index >= 0; --index) {
+            tasks.push_back(harness.store().acquireOriginal({origin, index}, media::Api::HostPlanes,
+                                                            harness.store().hostDomain(),
+                                                            harness.cpu(), true));
+        }
+        auto reads = dvv::syncWait(dvv::whenAll(std::move(tasks)));
+        REQUIRE(reads.size() == 10);
+        for (std::size_t i = 0; i < reads.size(); ++i) {
+            const auto index = static_cast<std::int64_t>(9 - i);
+            CAPTURE(index);
+            REQUIRE_MESSAGE(reads[i].has_value(), reads[i].error().describe());
+            const std::string ours = md5Hex(dvv::components::testing::originalReadBytes(*reads[i]));
+            CHECK(ours == hashes[static_cast<std::size_t>(index)].md5);
+        }
+    }
+}

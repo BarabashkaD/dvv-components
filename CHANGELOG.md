@@ -6,6 +6,21 @@ the dvv rules: compatible = the same major and at least the minimum version, als
 changes only in a new major, after a deprecation. This file is the release notes (there are no
 GitHub Releases).
 
+## [0.1.2] - 2026-10-29
+
+### Added
+- A single-thread FFmpeg decode test (`dvv_components.ffmpeg_single_thread`, label `ffmpeg`): the
+  decoders start no FFmpeg threads and the thread-sanitizer preset runs it without suppressions.
+
+### Changed
+- LICENSE: the copyright line names BarabashkaD.
+
+### Fixed
+- The ThreadSanitizer suppressions for FFmpeg (`tests/tsan.supp`) use `called_from_lib:` for the
+  loaded FFmpeg libraries instead of `race:`, so races in dvv code that FFmpeg's threads run (the
+  log callback) and races between dvv threads on memory FFmpeg allocated are reported again.
+  FFmpeg's own locking is not visible to ThreadSanitizer (see `tests/tsan.supp`).
+
 ## [0.1.1] - 2026-10-28
 
 ### Fixed
