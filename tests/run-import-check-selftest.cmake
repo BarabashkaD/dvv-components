@@ -38,4 +38,14 @@ expect(linux-swresample swresample
 expect(linux-avdevice avdevice
        "${linux_header} 0x0000000000000001 (NEEDED) Shared library: [libavdevice.so]\n")
 
+set(macos_header "consumer:\n")
+expect(macos-clean pass
+       "${macos_header}\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2000.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1400.0.0)\n\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0)\n\t@rpath/libavutil_extra.dylib (compatibility version 1.0.0)\n")
+expect(macos-avcodec avcodec
+       "${macos_header}\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)\n\t@rpath/libavcodec.62.dylib (compatibility version 62.0.0)\n")
+expect(macos-avutil-path avutil
+       "${macos_header}\t/opt/ffmpeg/lib/libavutil.60.26.103.dylib (compatibility version 60.0.0)\n")
+expect(macos-unversioned swscale
+       "${macos_header}\t@loader_path/libswscale.dylib (compatibility version 1.0.0)\n")
+
 message(STATUS "import check self-test passed")

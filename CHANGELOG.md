@@ -6,6 +6,17 @@ the dvv rules: compatible = the same major and at least the minimum version, als
 changes only in a new major, after a deprecation. This file is the release notes (there are no
 GitHub Releases).
 
+## [0.2.0] - 2026-11-07
+
+### Added
+- macOS (Apple Silicon): the FFmpeg libraries are found as `lib<name>.<major>.dylib`, the FFmpeg
+  search also looks in `<exe>/../Frameworks/ffmpeg` (an app bundle), and the import check uses
+  `otool -L` on macOS.
+
+### Changed
+- Requires dvv-build 0.2.0, dvv-base 0.2.0, dvv-registry 0.1.1, dvv-platform 0.2.0 and
+  dvv-gpu 0.2.0.
+
 ## [0.1.2] - 2026-10-29
 
 ### Added

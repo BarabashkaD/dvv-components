@@ -170,8 +170,13 @@ TEST_CASE("planSearch: explicit directories are final and must be absolute") {
 TEST_CASE("planSearch: the default search looks next to the executable") {
     const std::filesystem::path a = absoluteDirectory();
     const std::filesystem::path e = a / "bin";
+#if defined(__APPLE__)
+    const std::vector<std::filesystem::path> expected =
+        normal({e / "ffmpeg", a / "lib" / "ffmpeg", a / "Frameworks" / "ffmpeg"});
+#else
     const std::vector<std::filesystem::path> expected =
         normal({e / "ffmpeg", a / "lib" / "ffmpeg"});
+#endif
     for (const std::optional<std::string>& environment :
          {std::optional<std::string>(), std::optional<std::string>("")}) {
         CAPTURE(environment.has_value());
@@ -190,6 +195,9 @@ TEST_CASE("libraryFileName and versionText") {
 #if defined(_WIN32)
     CHECK(libraryFileName("avutil", 60) == "avutil-60.dll");
     CHECK(libraryFileName("swresample", 6) == "swresample-6.dll");
+#elif defined(__APPLE__)
+    CHECK(libraryFileName("avutil", 60) == "libavutil.60.dylib");
+    CHECK(libraryFileName("swresample", 6) == "libswresample.6.dylib");
 #else
     CHECK(libraryFileName("avutil", 60) == "libavutil.so.60");
     CHECK(libraryFileName("swresample", 6) == "libswresample.so.6");

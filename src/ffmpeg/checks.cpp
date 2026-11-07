@@ -96,6 +96,9 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
     if (!exe_dir.empty()) {
         plan.directories.push_back((exe_dir / "ffmpeg").lexically_normal());
         plan.directories.push_back((exe_dir / ".." / "lib" / "ffmpeg").lexically_normal());
+#if defined(__APPLE__)
+        plan.directories.push_back((exe_dir / ".." / "Frameworks" / "ffmpeg").lexically_normal());
+#endif
     }
     return plan;
 }
@@ -112,6 +115,8 @@ std::string_view sourceName(SearchSource source) noexcept {
 std::string libraryFileName(std::string_view library, unsigned major) {
 #if defined(_WIN32)
     return std::format("{}-{}.dll", library, major);
+#elif defined(__APPLE__)
+    return std::format("lib{}.{}.dylib", library, major);
 #else
     return std::format("lib{}.so.{}", library, major);
 #endif

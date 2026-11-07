@@ -1,6 +1,6 @@
 # Fails when a binary imports an FFmpeg library (M4 design D3: FFmpeg is loaded at run time and never
 # linked). Installed with dvv_components; dvv_check_no_ffmpeg_imports() adds a CTest test for it.
-#   cmake -DBINARIES=<file>[,<file>...] (-DDUMPBIN=<dumpbin> | -DREADELF=<readelf>)
+#   cmake -DBINARIES=<file>[,<file>...] (-DDUMPBIN=<dumpbin> | -DREADELF=<readelf> | -DOTOOL=<otool>)
 #         -P check-no-ffmpeg-imports.cmake
 #   cmake -DLISTING=<text file> -P check-no-ffmpeg-imports.cmake   (checks a saved listing)
 cmake_minimum_required(VERSION 4.2)
@@ -12,9 +12,11 @@ function(check_listing what listing)
     string(TOLOWER " ${listing}" listing)
     foreach(name IN LISTS ffmpeg_libraries)
         # Windows: "avutil-60.dll" or "avutil.dll", never "myavutil.dll" or "my-avutil.dll";
-        # Linux: "[libavutil.so.60]".
+        # Linux: "[libavutil.so.60]";
+        # macOS: "@rpath/libavutil.60.dylib" or a path to libavutil.60.26.103.dylib.
         if(listing MATCHES "[^a-z0-9_.-]${name}(-[0-9]+)?\\.dll" OR
-           listing MATCHES "\\[lib${name}\\.so(\\.[0-9]+)*\\]")
+           listing MATCHES "\\[lib${name}\\.so(\\.[0-9]+)*\\]" OR
+           listing MATCHES "/lib${name}(\\.[0-9]+)*\\.dylib")
             message(FATAL_ERROR "${what} imports the FFmpeg library ${name}; FFmpeg must be loaded "
                                 "at run time, never linked (M4 design D3)")
         endif()
@@ -35,11 +37,14 @@ foreach(binary IN LISTS binaries)
     if(DUMPBIN)
         execute_process(COMMAND "${DUMPBIN}" /nologo /dependents "${binary}"
                         RESULT_VARIABLE status OUTPUT_VARIABLE listing ERROR_VARIABLE error)
+    elseif(OTOOL)
+        execute_process(COMMAND "${OTOOL}" -L "${binary}"
+                        RESULT_VARIABLE status OUTPUT_VARIABLE listing ERROR_VARIABLE error)
     elseif(READELF)
         execute_process(COMMAND "${READELF}" -d "${binary}"
                         RESULT_VARIABLE status OUTPUT_VARIABLE listing ERROR_VARIABLE error)
     else()
-        message(FATAL_ERROR "pass -DDUMPBIN=<dumpbin> or -DREADELF=<readelf>")
+        message(FATAL_ERROR "pass -DDUMPBIN=<dumpbin>, -DREADELF=<readelf> or -DOTOOL=<otool>")
     endif()
     if(NOT status EQUAL 0)
         message(FATAL_ERROR "reading the imports of ${binary} failed (${status}): ${error}")
