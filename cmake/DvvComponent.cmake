@@ -84,12 +84,16 @@ endfunction()
 
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)
 #   Adds a CTest test that fails when the binary of one of the targets imports an FFmpeg library
-#   (M4 design D3), reading the import tables with dumpbin (MSVC, next to the compiler) or readelf.
+#   (M4 design D3), reading the import tables with dumpbin (MSVC, next to the compiler),
+#   otool -L (macOS) or readelf.
 function(dvv_check_no_ffmpeg_imports test_name)
     if(MSVC)
         cmake_path(GET CMAKE_CXX_COMPILER PARENT_PATH compiler_dir)
         find_program(DVV_DUMPBIN dumpbin HINTS "${compiler_dir}" NO_DEFAULT_PATH REQUIRED)
         set(tool "-DDUMPBIN=${DVV_DUMPBIN}")
+    elseif(APPLE)
+        find_program(DVV_OTOOL otool REQUIRED)
+        set(tool "-DOTOOL=${DVV_OTOOL}")
     else()
         find_program(DVV_READELF NAMES llvm-readelf-19 llvm-readelf readelf REQUIRED)
         set(tool "-DREADELF=${DVV_READELF}")
