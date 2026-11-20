@@ -1,5 +1,5 @@
 // The FFmpeg loader and the FFmpeg module against the prefix's FFmpeg and against directories
-// without one (M4 design D3, §8.1). FFmpeg loads once per process, so each suite runs in its own
+// without one. FFmpeg loads once per process, so each suite runs in its own
 // CTest entry.
 
 #include <doctest/doctest.h>

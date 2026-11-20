@@ -1,4 +1,4 @@
-# The container fixtures of the ffmpeg provider tests (M4 Task 5a; v1.0 codec scope: lossless
+# The container fixtures of the ffmpeg provider tests (lossless
 # codecs only, except the lossy clip that only has to be refused), made by the prefix's ffmpeg.
 #
 #   cmake -DFFMPEG=<ffmpeg program> -DOUT=<dir> [-DLIBDIR=<FFmpeg library dir>] -P <this file>
@@ -95,7 +95,7 @@ foreach(format IN LISTS ffv1_formats)
     reference(ffv1_${format}.mkv)
 endforeach()
 
-# The Sequential fixture (D5; Task 0 chose seq.mkv: FFV1 in MKV with pairs of equal pts) and its
+# The Sequential fixture (seq.mkv: FFV1 in MKV with pairs of equal pts) and its
 # long variant for the stop tests (no reference). The stop tests pace the decoding themselves, so
 # long.mkv needs only its 3000 frames, not a large frame size.
 foreach(name_size_frames IN ITEMS seq:352x288:30 long:352x288:3000)
@@ -115,7 +115,7 @@ run_ffmpeg(-f lavfi -i testsrc2=s=352x288:r=25 -frames:v 10 -pix_fmt yuv420p -c:
            -g 3 ffv1_gop.mkv)
 reference(ffv1_gop.mkv)
 
-# Lossless codecs per container (v1.0 codec scope).
+# Lossless codecs per container.
 foreach(entry IN ITEMS "yuv422p;huffyuv;lossless_huffyuv.avi" "yuv420p;utvideo;lossless_utvideo.mkv"
                        "yuv422p10le;v210;lossless_v210.mov" "yuv444p;magicyuv;lossless_magicyuv.nut")
     list(GET entry 0 format)
@@ -126,7 +126,7 @@ foreach(entry IN ITEMS "yuv422p;huffyuv;lossless_huffyuv.avi" "yuv420p;utvideo;l
     reference(${file})
 endforeach()
 
-# The other allowlisted codecs (Task 11-pre): rawvideo in AVI, MOV and NUT
+# The other allowlisted codecs: rawvideo in AVI, MOV and NUT
 # (the stem names the container, so the references do not collide), r210 and qtrle in MOV (qtrle
 # keeps inter frames, so its reads exercise the seek to a key frame).
 foreach(entry IN ITEMS "yuv420p;rawvideo;lossless_rawvideo_avi.avi"
@@ -145,13 +145,13 @@ endforeach()
 run_ffmpeg(-f lavfi -i testsrc2=s=192x144:r=25 -frames:v 10 -pix_fmt yuv444p10le -c:v v410
            lossless_v410.mov)
 
-# A frame size change inside one stream (§5.4): PNG carries its size in every frame.
+# A frame size change inside one stream: PNG carries its size in every frame.
 run_ffmpeg(-f lavfi -i testsrc2=s=352x288:r=25 -frames:v 5 -pix_fmt gray -c:v png part_a.mkv)
 run_ffmpeg(-f lavfi -i testsrc2=s=176x144:r=25 -frames:v 5 -pix_fmt gray -c:v png part_b.mkv)
 file(WRITE "${dir}/concat.txt" "file 'part_a.mkv'\nfile 'part_b.mkv'\n")
 run_ffmpeg(-f concat -safe 0 -i concat.txt -c copy concat_sizes.mkv)
 
-# The lossy refusal clip (Task 0 recorded "mpeg4 encoder: yes"); no reference.
+# The lossy refusal clip (the prefix's ffmpeg has the mpeg4 encoder); no reference.
 run_ffmpeg(-f lavfi -i testsrc2=s=64x48:r=25 -frames:v 5 -pix_fmt yuv420p -c:v mpeg4
            lossy_mpeg4.mp4)
 

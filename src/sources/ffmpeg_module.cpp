@@ -1,4 +1,4 @@
-// The FFmpeg module (spec §6.2): parses its option, loads FFmpeg once per process and reports the
+// The FFmpeg module: parses its option, loads FFmpeg once per process and reports the
 // capabilities, the reason and the properties of that load.
 
 #include "sources/ffmpeg_module.h"

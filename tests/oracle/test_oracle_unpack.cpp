@@ -1,4 +1,4 @@
-// The FFmpeg oracle for unpack (M4 design v2 §8.3, E2): for every catalogue format, our CPU unpack
+// The FFmpeg oracle for unpack: for every catalogue format, our CPU unpack
 // (unpackToPlanes) equals FFmpeg's extractplanes bit for bit.
 
 #include <doctest/doctest.h>

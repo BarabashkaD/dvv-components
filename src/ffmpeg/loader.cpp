@@ -1,4 +1,4 @@
-// The FFmpeg run-time loader (M4 design D3, §4.4, §5.5, §6): finds, opens, resolves and checks the
+// The FFmpeg run-time loader: finds, opens, resolves and checks the
 // six libraries once per process and never unloads them; routes FFmpeg's log to the dvv logger.
 
 #include <array>
@@ -93,7 +93,7 @@ std::string libraryFile(Library library) {
     return platform::libraryFileName(entry.name, entry.compiledVersion >> 16);
 }
 
-// Process infrastructure (design §6): created once, never destroyed, like the Logger.
+// Process infrastructure: created once, never destroyed, like the Logger.
 struct LoaderState {
     std::once_flag once;
     FfmpegStatus status;
@@ -125,7 +125,7 @@ void markDecodeError(void* object) noexcept {
     }
 }
 
-// FFmpeg's log goes to the dvv logger, capped at warning; nothing reaches stderr (design D3).
+// FFmpeg's log goes to the dvv logger, capped at warning; nothing reaches stderr.
 // Errors for a codec context with a DecodeErrorMark also raise it.
 // Called from FFmpeg's C frames (maybe its worker threads): no exception may escape, so a line that
 // cannot be formatted or written is dropped.
@@ -246,7 +246,7 @@ Located locate(const FfmpegLoadOptions& options) {
             .error = std::format("FFmpeg not found (looked in {}; {})", looked, HINT)};
 }
 
-// Behaviour of Task 4: plan, directory, open, resolve, library info, refusal, success.
+// Behaviour: plan, directory, open, resolve, library info, refusal, success.
 void load(LoaderState& state, const FfmpegLoadOptions& options) {
     FfmpegStatus& status = state.status;
     status = {};  // a retry after a throwing attempt (call_once runs again) starts clean

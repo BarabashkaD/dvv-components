@@ -1,6 +1,6 @@
 #pragma once
 
-// Pure parts of the FFmpeg loader (M4 design D3), unit-tested without FFmpeg.
+// Pure parts of the FFmpeg loader, unit-tested without FFmpeg.
 
 #include <cstdint>
 #include <filesystem>

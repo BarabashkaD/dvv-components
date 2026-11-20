@@ -65,7 +65,7 @@ struct FfmpegLoadOptions {
 // thread-safe) and never unloads. Search: options.directory, else DVV_FFMPEG_DIR (an empty value
 // counts as unset), else <exe dir>/ffmpeg, then <exe dir>/../lib/ffmpeg. An explicit directory is
 // final: a failure there leaves FFmpeg off with the reason. Every library passes the checks of
-// design D3 (refusalReason) and every function of the table resolves. Installs the av_log callback.
+// refusalReason and every function of the table resolves. Installs the av_log callback.
 // Adds nothing to a registry.
 [[nodiscard]] const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options = {});
 // Deprecated (0.3.0): use ComponentRegistry::load() and registry.module(FFMPEG_MODULE); removed in

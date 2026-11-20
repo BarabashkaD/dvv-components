@@ -1,4 +1,4 @@
-# Component libraries (spec §9.1; M4 design §4.4). Installed with dvv_components and included by its
+# Component libraries. Installed with dvv_components and included by its
 # package configuration; in-tree the dvv_components project includes it. Needs
 # dvv_set_compiler_options() (dvv_base, DvvCompilerOptions.cmake) and dvv_link_components()
 # (dvv_registry, DvvComponents.cmake).
@@ -23,8 +23,8 @@
 # dvv_components_link(<target>): deprecated (0.3.0), use dvv_link_enabled_components(); removed
 #   in 1.0.0.
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)
-#   A CTest test that fails when one of the targets' binaries imports an FFmpeg library (M4 design
-#   D3), through ${DVV_COMPONENTS_CMAKE_DIR}/check-no-ffmpeg-imports.cmake.
+#   A CTest test that fails when one of the targets' binaries imports an FFmpeg library,
+#   through ${DVV_COMPONENTS_CMAKE_DIR}/check-no-ffmpeg-imports.cmake.
 include_guard(GLOBAL)
 
 function(dvv_add_component id)
@@ -86,8 +86,8 @@ function(dvv_components_link target)
 endfunction()
 
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)
-#   Adds a CTest test that fails when the binary of one of the targets imports an FFmpeg library
-#   (M4 design D3), reading the import tables with dumpbin (MSVC, next to the compiler),
+#   Adds a CTest test that fails when the binary of one of the targets imports an FFmpeg library,
+#   reading the import tables with dumpbin (MSVC, next to the compiler),
 #   otool -L (macOS) or readelf.
 function(dvv_check_no_ffmpeg_imports test_name)
     if(MSVC)

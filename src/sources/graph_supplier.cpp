@@ -1,4 +1,4 @@
-// The `lavfi` provider's filter graph (design v2 D6, §4.4 lavfi, §5.4; v1.0 codec scope).
+// The `lavfi` provider's filter graph.
 
 #include "sources/graph_supplier.h"
 
@@ -239,7 +239,7 @@ Result<const AVFrame*> GraphSupplier::frame(std::int64_t index, const StopCheck&
 
 Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     // 1. The graph is the URI's body exactly as given (lavfi: is an opaque scheme, so parseUri
-    // keeps it whole); a '?' would start a query, which lavfi: URIs do not take (D28).
+    // keeps it whole); a '?' would start a query, which lavfi: URIs do not take.
     const std::string& graph = uri.body;
     if (graph.empty()) {
         return makeError(Errc::Format, "lavfi: URI without a graph");
@@ -273,7 +273,7 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     }
     const auto width = static_cast<std::uint32_t>(first->width);
     const auto height = static_cast<std::uint32_t>(first->height);
-    // The frame's tags with the PAL/NTSC hint applied (D5R Task 0); a non-standard set is logged.
+    // The frame's tags with the PAL/NTSC hint applied; a non-standard set is logged.
     const ColourTags tags{.space = first->colorspace,
                           .range = first->color_range,
                           .transfer = first->color_trc,
@@ -303,7 +303,7 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
                                        media::formatFps(media::FALLBACK_FPS)));
     }
 
-    // 4. Every later frame is checked against frame 0; the ring gets its D5 size (frame 0 stays).
+    // 4. Every later frame is checked against frame 0; the ring gets its size (frame 0 stays).
     supplier->setExpected(desc, av_format);
     supplier->resizeRing(ringCapacity(layout.bytes));
 
@@ -315,12 +315,12 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     info.fixed = media::FixedFields::all();
     info.frameCount = std::nullopt;
     info.access = media::SourceAccess::Sequential;
-    info.deterministic = lavfiDeterministic(graph);  // gradients and random colours are not (D6)
+    info.deterministic = lavfiDeterministic(graph);  // gradients and random colours are not
     info.resolvedUri = "lavfi:" + graph;
     info.provider = "lavfi";
     info.warnings = std::move(warnings);
     info.notes = std::move(notes);
-    // The hint from frame 0's tags, for the labels (D5R F1).
+    // The hint from frame 0's tags, for the labels.
     info.colourHint = mapped.hint;
     info.reader = "lavfi";  // no file is read (no file read mode applies)
     opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc, generation);

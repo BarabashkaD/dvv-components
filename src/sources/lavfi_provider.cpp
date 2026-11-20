@@ -1,5 +1,5 @@
-// The `lavfi` source provider (design v2 D6, §4.4 lavfi; v1.0 codec scope): lavfi:<graph> URIs
-// build an in-process libavfilter graph (FFmpeg loaded at run time, D3) whose single video output
+// The `lavfi` source provider: lavfi:<graph> URIs
+// build an in-process libavfilter graph (FFmpeg loaded at run time) whose single video output
 // ends in a buffersink; frames are pulled in order on one worker thread per source.
 
 #include <array>

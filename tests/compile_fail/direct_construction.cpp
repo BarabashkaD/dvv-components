@@ -1,8 +1,8 @@
-// Compile-fail cases for the components of dvv-components (spec §9.4). DVV_COMPILE_FAIL_CASE
+// Compile-fail cases for the components of dvv-components. DVV_COMPILE_FAIL_CASE
 // selects one:
 //   0  control: the components' headers compile
 //   1  constructing a component with a forged registry key (CreationKey's constructor is private)
-//   2  the same for FfmpegSourceProvider (M4 Task 5a)
+//   2  the same for FfmpegSourceProvider
 #include <type_traits>
 
 #include "dvv/base/lifetime.h"

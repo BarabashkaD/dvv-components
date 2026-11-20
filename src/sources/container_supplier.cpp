@@ -1,4 +1,4 @@
-// The `ffmpeg` provider's container path (design v2 §4.4, D5, D28; v1.0 codec scope).
+// The `ffmpeg` provider's container path.
 
 #include "sources/container_supplier.h"
 
@@ -59,7 +59,7 @@ Error damagedFrame(std::int64_t index, std::optional<std::int64_t> from) {
                  .cause = nullptr};
 }
 
-// Only `stream` is demuxed (D5: every other stream is discarded).
+// Only `stream` is demuxed (every other stream is discarded).
 void discardOthers(AVFormatContext& format, int stream) noexcept {
     for (unsigned i = 0; i < format.nb_streams; ++i) {
         if (static_cast<int>(i) != stream) {
@@ -68,7 +68,7 @@ void discardOthers(AVFormatContext& format, int stream) noexcept {
     }
 }
 
-// D5 stream choice: the best video stream; when it is an attached picture, the first video stream
+// The stream choice: the best video stream; when it is an attached picture, the first video stream
 // that is not. -1 when there is none.
 int chooseStream(AVFormatContext& format) {
     const int best =
@@ -86,7 +86,7 @@ int chooseStream(AVFormatContext& format) {
     return -1;
 }
 
-// The D5 stream choice and the lossless codec allowlist on the codec id the demuxer reports.
+// The stream choice and the lossless codec allowlist on the codec id the demuxer reports.
 Result<int> chooseLosslessStream(AVFormatContext& format) {
     const int stream = chooseStream(format);
     if (stream < 0) {
@@ -109,7 +109,7 @@ std::string codecWhitelist() {
     return list;
 }
 
-// avformat_open_input with protocol_whitelist=file (D3) and codec_whitelist = the lossless
+// avformat_open_input with protocol_whitelist=file and codec_whitelist = the lossless
 // allowlist (FFmpeg opens no other decoder, not even while avformat_find_stream_info probes
 // the streams), then avformat_find_stream_info.
 Result<ffmpeg::FormatContextPtr> openFormat(const std::string& url) {
@@ -324,7 +324,7 @@ Result<const AVFrame*> ContainerSupplier::frame(std::int64_t index, const StopCh
         }
     }
     if (sequential_) {
-        // D5/D6: forward from the newest frame; anything behind it restarts from the beginning.
+        // Forward from the newest frame; anything behind it restarts from the beginning.
         if (needs_reset_ || !last_ || index <= *last_) {
             DVV_TRY_VOID(restart());
         }
@@ -589,7 +589,7 @@ Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, Contain
     const auto width = static_cast<std::uint32_t>(first.width);
     const auto height = static_cast<std::uint32_t>(first.height);
 
-    // 9. Frame rate and the D28 query check.
+    // 9. Frame rate and the query check.
     std::vector<std::string> warnings;
     const AVRational guessed = supplier->guessedFrameRate();
     media::Rational fps = reduced({guessed.num, guessed.den});
@@ -604,7 +604,7 @@ Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, Contain
                          .format = format->format, .width = width, .height = height, .fps = fps}));
 
     // 10. Colour: the frame's tags, then the stream's (per field; both logged when they differ),
-    // then the alias range, the PAL/NTSC hint, then the query (D28, D5R §3.1).
+    // then the alias range, the PAL/NTSC hint, then the query.
     const AVCodecParameters& parameters = supplier->codecParameters();
     const ColourTags frame_tags{.space = first.colorspace,
                                 .range = first.color_range,
@@ -658,7 +658,7 @@ Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, Contain
     info.provider = "ffmpeg";
     info.warnings = std::move(warnings);
     info.notes = std::move(notes);
-    // The hint from the file's tags, for the labels (D5R F1).
+    // The hint from the file's tags, for the labels.
     info.colourHint = mapped.hint;
     info.reader = "ffmpeg";  // FFmpeg's own file I/O (no file read mode applies)
     opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc, generation);

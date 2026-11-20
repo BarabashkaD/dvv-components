@@ -1,4 +1,4 @@
-// The AVERROR mapping (M4 design v2 §7) and the RAII deleters of the FFmpeg binding.
+// The AVERROR mapping and the RAII deleters of the FFmpeg binding.
 
 #include "dvv/base/error.h"
 

@@ -1,4 +1,4 @@
-// Pure rules of the FFmpeg providers (M4 design v2 §4.4, D5, D28; v1.0 codec scope).
+// Pure rules of the FFmpeg providers.
 
 #include "sources/ffmpeg_rules.h"
 
@@ -158,8 +158,8 @@ Result<media::ColourParams> overrideColour(const media::ColourParams& mapped,
     media::ColourParams colour = mapped;
     if (query.preset) {
         const media::ColourParams standard = media::merged(query, model);
-        // A YUV-model stream tagged with the GBR matrix keeps it: its planes hold G, B and R
-        // (design §3.3 rule 5), so only the curve and the primaries follow the standard.
+        // A YUV-model stream tagged with the GBR matrix keeps it: its planes hold G, B and R,
+        // so only the curve and the primaries follow the standard.
         if (standard.matrix != media::ColourMatrix::Unspecified &&
             mapped.matrix != media::ColourMatrix::Rgb) {
             colour.matrix = standard.matrix;

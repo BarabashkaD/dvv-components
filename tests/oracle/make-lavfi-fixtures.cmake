@@ -1,4 +1,4 @@
-# The lavfi reference fixtures of the lavfi provider tests (M4 Task 5b): each graph run through the
+# The lavfi reference fixtures of the lavfi provider tests: each graph run through the
 # prefix's ffmpeg into raw frames.
 #
 #   cmake -DFFMPEG=<ffmpeg program> -DOUT=<dir> [-DLIBDIR=<FFmpeg library dir>] -P <this file>

@@ -1,4 +1,4 @@
-// One worker thread per FFmpeg or lavfi source (design v2 §5.1, §5.4, D5).
+// One worker thread per FFmpeg or lavfi source.
 
 #include "sources/av_worker.h"
 
@@ -159,11 +159,11 @@ AvWorker::AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc de
     : stop_{.flag = &stopping_, .generation = generation},
       desc_(desc),
       supplier_(wrapForTest(std::move(supplier))),
-      pool_(makeWorkerPool()) {}  // the source's own worker (D5)
+      pool_(makeWorkerPool()) {}  // the source's own worker
 
 AvWorker::~AvWorker() {
     {
-        // §5.4: before joining the worker; every request counted so far is already posted.
+        // Before joining the worker; every request counted so far is already posted.
         const std::lock_guard lock(post_mutex_);
         stopping_.store(true, std::memory_order_release);
     }

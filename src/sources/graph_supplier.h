@@ -1,6 +1,6 @@
 #pragma once
 
-// The `lavfi` provider's filter graph (design v2 D6, §4.4 lavfi, §5.4): build, pull, restart and
+// The `lavfi` provider's filter graph: build, pull, restart and
 // end of one libavfilter graph whose single video output ends in a buffersink.
 
 #include <cstddef>
@@ -21,7 +21,7 @@
 
 namespace dvv::components::detail {
 
-// One lavfi graph (design v2 D6, §4.4 lavfi). Built on open and on every restart; used only on the
+// One lavfi graph. Built on open and on every restart; used only on the
 // source's worker after open. Frames are numbered 0, 1, 2… in pull order since the last build.
 class GraphSupplier final : public IFrameSupplier {
 public:

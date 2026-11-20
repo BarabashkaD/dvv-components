@@ -1,5 +1,5 @@
-// The `ffmpeg` source provider (design v2 §4.4, §5.1; v1.0 codec scope): files of any container
-// FFmpeg demuxes, lossless video codecs only, through FFmpeg loaded at run time (D3).
+// The `ffmpeg` source provider: files of any container FFmpeg demuxes, lossless video codecs
+// only, through FFmpeg loaded at run time.
 
 #include "sources/ffmpeg_provider.h"
 

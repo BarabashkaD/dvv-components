@@ -1,6 +1,6 @@
 #pragma once
 
-// One worker thread per FFmpeg or lavfi source (design v2 §5.1, §5.4, D5): the stop condition, the
+// One worker thread per FFmpeg or lavfi source: the stop condition, the
 // supplier interface, the frame check and the copy into a catalogue original.
 
 #include <atomic>
@@ -52,7 +52,7 @@ public:
                                                        const StopCheck& stopped) = 0;
 };
 
-// §5.4 frame check: width, height and format equal the descriptor's, else Errc::Format
+// The frame check: width, height and format equal the descriptor's, else Errc::Format
 // "frame <index> changed to <w>x<h> <pix_fmt name>".
 [[nodiscard]] Result<void> checkFrame(const AVFrame& frame, std::int64_t index,
                                       const media::FrameDesc& desc, int expected_av_format);
@@ -121,7 +121,7 @@ private:
     [[nodiscard]] Result<const AVFrame*> frameOnWorker(std::int64_t index, std::stop_token stop);
 
     std::mutex post_mutex_;              // orders posting against the stop flag
-    std::atomic<bool> stopping_{false};  // design v2 D5/§5.4: the stop flag
+    std::atomic<bool> stopping_{false};  // the stop flag
     StopCheck stop_;                     // the flag or stopFfmpegSources()
     std::atomic<std::size_t> queued_{0};
     media::FrameDesc desc_;

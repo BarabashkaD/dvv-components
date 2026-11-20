@@ -1,4 +1,4 @@
-// The FFmpeg binding's pure parts (M4 design D3, §7): library checks, search plan, file names and
+// The FFmpeg binding's pure parts: library checks, search plan, file names and
 // the AVERROR mapping, without FFmpeg loaded.
 
 #include <doctest/doctest.h>

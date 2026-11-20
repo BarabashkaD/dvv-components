@@ -1,4 +1,4 @@
-# Fails when a binary imports an FFmpeg library (M4 design D3: FFmpeg is loaded at run time and never
+# Fails when a binary imports an FFmpeg library (FFmpeg is loaded at run time and never
 # linked). Installed with dvv_components; dvv_check_no_ffmpeg_imports() adds a CTest test for it.
 #   cmake -DBINARIES=<file>[,<file>...] (-DDUMPBIN=<dumpbin> | -DREADELF=<readelf> | -DOTOOL=<otool>)
 #         -P check-no-ffmpeg-imports.cmake

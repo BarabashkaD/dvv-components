@@ -12,7 +12,7 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
-# The enabled components (spec §12: the registry equals the enabled CMake set) as
+# The enabled components (the registry equals the enabled CMake set) as
 # dvv::components::testing::CMAKE_COMPONENTS, one {"<component id>"} each.
 get_property(ids GLOBAL PROPERTY DVV_COMPONENTS_IDS)
 list(SORT ids)
@@ -51,7 +51,8 @@ target_include_directories(dvv_components_tests PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${CMAKE_CURRENT_SOURCE_DIR}/components)
 target_link_libraries(dvv_components_tests PRIVATE dvv::components doctest::doctest)
-# Every enabled component and the M2 source providers, as whole archives (their DVV_REGISTER lines).
+# Every enabled component and the dvv::media_sources providers, as whole archives (their
+# DVV_REGISTER lines).
 dvv_link_enabled_components(dvv_components_tests)
 dvv_link_components(dvv_components_tests dvv::media_sources)
 # doctest otherwise only forward-declares std::ostream, which breaks printing std types.
@@ -77,7 +78,7 @@ target_sources(dvv_components_tests PRIVATE
 target_include_directories(dvv_components_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg)
 target_link_libraries(dvv_components_tests PRIVATE dvv::ffmpeg dvv_ffmpeg_internal)
 
-# FFmpeg tests (label ffmpeg; M4 design §3, §8.1): one executable, one CTest entry per loader
+# FFmpeg tests (label ffmpeg): one executable, one CTest entry per loader
 # directory (FFmpeg loads once per process): the prefix's FFmpeg, an existing empty directory and a
 # relative DVV_FFMPEG_DIR. Without FFmpeg the first exits 77 unless DVV_REQUIRE_FFMPEG=1; the
 # deliberate no-FFmpeg entries unset it.
@@ -93,14 +94,15 @@ target_include_directories(dvv_components_ffmpeg_tests PRIVATE ${CMAKE_CURRENT_S
                                                                ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg)
 target_link_libraries(dvv_components_ffmpeg_tests PRIVATE dvv::components dvv_ffmpeg_internal
                                                           doctest::doctest)
-# Every enabled component and the M2 source providers (the provider tests open raw and Y4M files).
+# Every enabled component and the dvv::media_sources providers (the provider tests open raw and
+# Y4M files).
 dvv_link_enabled_components(dvv_components_ffmpeg_tests)
 dvv_link_components(dvv_components_ffmpeg_tests dvv::media_sources)
 target_compile_definitions(dvv_components_ffmpeg_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 dvv_set_compiler_options(dvv_components_ffmpeg_tests)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/no-ffmpeg)
 
-# The container fixtures of the ffmpeg provider tests (Task 5a), made by the prefix's ffmpeg into
+# The container fixtures of the ffmpeg provider tests, made by the prefix's ffmpeg into
 # <OUT>/<ffmpeg version>/ once (done.stamp); <OUT>/current.txt names that folder.
 set(ffmpeg_fixtures_dir ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-fixtures)
 add_test(NAME dvv_components.ffmpeg_fixtures
@@ -113,7 +115,7 @@ set_tests_properties(dvv_components.ffmpeg_fixtures PROPERTIES
     FIXTURES_SETUP dvv_components_ffmpeg_fixtures
     LABELS ffmpeg
     TIMEOUT 900)
-# The lavfi reference fixtures of the lavfi provider tests (Task 5b): the same layout, keying and
+# The lavfi reference fixtures of the lavfi provider tests: the same layout, keying and
 # stamp in <OUT>/<ffmpeg version>/.
 set(lavfi_fixtures_dir ${CMAKE_CURRENT_BINARY_DIR}/lavfi-fixtures)
 add_test(NAME dvv_components.lavfi_fixtures
@@ -189,8 +191,8 @@ set_tests_properties(dvv_components.ffmpeg_single_thread PROPERTIES
     ENVIRONMENT DVV_LEAK_CHECK=fail
     ENVIRONMENT_MODIFICATION "${single_thread_environment}")
 
-# FFmpeg oracle (design v2 §8.3): fixtures from the prefix's ffmpeg program, compared in C++ through
-# our raw provider. Non-sanitizer builds only (§8.1: the sanitizers already cover unit and ffmpeg).
+# FFmpeg oracle: fixtures from the prefix's ffmpeg program, compared in C++ through
+# our raw provider. Non-sanitizer builds only (the sanitizers already cover unit and ffmpeg).
 # The executable loads no FFmpeg library; without the fixtures it exits 77 unless
 # DVV_REQUIRE_FFMPEG=1.
 if(NOT DVV_SANITIZE)
@@ -218,7 +220,7 @@ if(NOT DVV_SANITIZE)
         ENVIRONMENT_MODIFICATION "${DVV_TEST_ENVIRONMENT}")
 endif()
 
-# No binary imports an FFmpeg library (M4 design D3), and the check itself works. The oracle
+# No binary imports an FFmpeg library, and the check itself works. The oracle
 # executable (non-sanitizer builds only) loads no FFmpeg library either.
 set(dvv_components_import_checked dvv_components_tests dvv_components_ffmpeg_tests)
 if(TARGET dvv_components_oracle_tests)
@@ -245,8 +247,8 @@ add_test(NAME dvv_components.cmake_functions
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-component-option-test.cmake)
 set_tests_properties(dvv_components.cmake_functions PROPERTIES TIMEOUT 300)
 
-# Compile-fail tests (spec §9.4). Case 0 is the control and must build; each other case must fail to
-# compile with its pattern: 1 the test component, 2 FfmpegSourceProvider (Task 5a). Every target
+# Compile-fail tests. Case 0 is the control and must build; each other case must fail to
+# compile with its pattern: 1 the test component, 2 FfmpegSourceProvider. Every target
 # sees the private FFmpeg headers, so case 2 fails on the private constructor, not on an include.
 set(compile_fail_source ${CMAKE_CURRENT_SOURCE_DIR}/compile_fail/direct_construction.cpp)
 add_executable(dvv_components_compile_ok ${compile_fail_source})
@@ -281,7 +283,7 @@ foreach(case IN ITEMS 1 2)
                          RESOURCE_LOCK dvv_build_tree)
 endforeach()
 
-# Package test (spec §3.1): install, then build a consumer with find_package(dvv_components) and
+# Package test: install, then build a consumer with find_package(dvv_components) and
 # another with dvv_components in-tree. The whole build tree is installed (CMAKE_BINARY_DIR), so the
 # prefix also holds dvv_base, dvv_registry, dvv_platform, dvv_gpu and dvv_media, which
 # dvv_dependencies() always adds as subprojects. Skipped for sanitizer builds, whose consumers would

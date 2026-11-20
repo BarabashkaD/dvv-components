@@ -1,5 +1,5 @@
-// The `lavfi` source provider against `ffmpeg -f lavfi … -f rawvideo` (M4 Task 5b; design v2 D6,
-// §4.4 lavfi, §5.4; v1.0 codec scope). Fixtures: tests/oracle/make-lavfi-fixtures.cmake.
+// The `lavfi` source provider against `ffmpeg -f lavfi … -f rawvideo`.
+// Fixtures: tests/oracle/make-lavfi-fixtures.cmake.
 
 #include <doctest/doctest.h>
 

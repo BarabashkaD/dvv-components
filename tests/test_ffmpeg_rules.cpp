@@ -1,4 +1,4 @@
-// The pure rules of the FFmpeg providers (M4 design v2 §4.4, D5, D28), without FFmpeg.
+// The pure rules of the FFmpeg providers, without FFmpeg.
 
 #include <doctest/doctest.h>
 
@@ -93,7 +93,7 @@ TEST_SUITE("ffmpeg_rules") {
                   media::ColourSpec{.preset = std::nullopt, .range = media::ColourRange::Full});
         }
         {
-            // colour= and range= (D5R §3.1): as written; range= with every standard.
+            // colour= and range=: as written; range= with every standard.
             const auto parsed = checkQuery("?colour=bt2100-pq&range=full");
             REQUIRE_MESSAGE(parsed.has_value(), parsed.error().describe());
             CHECK(*parsed == media::ColourSpec{.preset = media::ColourPreset::Bt2100Pq,
@@ -111,7 +111,7 @@ TEST_SUITE("ffmpeg_rules") {
                         "bt2100-pq, bt2100-hlg)");
         checkQueryFails("?colour=jpeg", "bad colour 'jpeg'");
         checkQueryFails("?range=tv", "bad range 'tv' (full, limited)");
-        // The removed keys (D5R §3.1) name colour=<standard>.
+        // The removed keys name colour=<standard>.
         for (const std::string_view key : {"matrix", "kr", "kb", "transfer", "primaries"}) {
             CAPTURE(key);
             const auto removed = checkQuery(std::string("?") + std::string(key) + "=bt709");
@@ -192,7 +192,7 @@ TEST_SUITE("ffmpeg_rules") {
                                     Primaries::Bt601_525));
         }
         {
-            // A YUV-model stream tagged with the GBR matrix keeps it (design §3.3 rule 5): the
+            // A YUV-model stream tagged with the GBR matrix keeps it: the
             // planes hold G, B and R, so a standard replaces only the curve and the primaries.
             const media::ColourParams gbr = colour(ColourMatrix::Rgb, ColourRange::Full);
             const auto result = detail::overrideColour(

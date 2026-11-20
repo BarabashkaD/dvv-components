@@ -26,7 +26,7 @@ AvSource::AvSource(CreationKey<media::SourceFactory> key, media::SourceInfo info
 
 Task<Result<media::FrameRef>> AvSource::produce(std::int64_t index, media::ProduceContext& ctx) {
     co_try(detail::checkFrameIndex(index, info_.frameCount));
-    // Concurrent calls (the store's prefetch) queue on the worker (§5.4).
+    // Concurrent calls (the store's prefetch) queue on the worker.
     co_return co_await worker_->produce(index, ctx);
 }
 
@@ -37,7 +37,7 @@ Task<Result<std::unique_ptr<media::ISource>>> openAvSource(
     Uri uri,  // NOLINT(performance-unnecessary-value-param): the task is lazy; it owns its
               // arguments
     IExecutor& io, std::stop_token stop, OpenSteps steps) {
-    co_await resumeOn(io);  // all FFmpeg work of open runs on the I/O pool (§5.1)
+    co_await resumeOn(io);  // all FFmpeg work of open runs on the I/O pool
     // A stop that came before the open starts pays for no FFmpeg call.
     if (stop.stop_requested()) {
         co_return makeError(Errc::Cancelled, "source request cancelled");

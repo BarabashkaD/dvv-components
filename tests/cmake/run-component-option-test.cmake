@@ -1,5 +1,5 @@
 # Configures tests/cmake/option-project once per case and checks what dvv_add_component() and
-# dvv_link_enabled_components() did (M4 design §4.4). Called by dvv_components.cmake_functions with
+# dvv_link_enabled_components() did. Called by dvv_components.cmake_functions with
 # -DPROJECT_DIR, -DWORK_DIR, -DGENERATOR, -DPLATFORM (may be empty), -DCXX_COMPILER,
 # -DCOMPONENT_MODULE and -DREGISTRY_MODULE.
 cmake_minimum_required(VERSION 4.2)

@@ -1,6 +1,6 @@
-// Component conformance (spec §12): the registry holds exactly the enabled components (the CMake
-// set of dvv_add_component() and the M2 source providers), and every component is valid, available
-// with its capabilities, owned by the registry and destroyed without a leak.
+// Component conformance: the registry holds exactly the enabled components (the CMake set of
+// dvv_add_component() and the source providers of dvv::media_sources), and every component is
+// valid, available with its capabilities, owned by the registry and destroyed without a leak.
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -31,7 +31,7 @@ const dvv::Capabilities& allCapabilities() {
     return ALL_CAPABILITIES;
 }
 
-// The source providers of dvv::media_sources (M2), linked into the test as well.
+// The source providers of dvv::media_sources, linked into the test as well.
 constexpr std::array<ExpectedComponent, 3> M2_PROVIDERS{{
     {"raw"},
     {"synthetic"},
@@ -160,8 +160,8 @@ TEST_CASE(
             }
         }
     }
-    // The M2 providers are listed even when the CMake set is empty (a dependent build with
-    // DVV_TEST_DEPENDENCIES).
+    // The dvv::media_sources providers are listed even when the CMake set is empty (a dependent
+    // build with DVV_TEST_DEPENDENCIES).
     for (const ExpectedComponent& provider : M2_PROVIDERS) {
         const std::string id(provider.id);
         CAPTURE(id);

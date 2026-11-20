@@ -1,4 +1,4 @@
-# The FFmpeg oracle fixtures (M4 design v2 §8.3, Task 6): a testsrc2 clip per catalogue format, the
+# The FFmpeg oracle fixtures: a testsrc2 clip per catalogue format, the
 # extractplanes reference planes of each clip and the swscale rgb24 outputs of the display rows, all
 # made by the prefix's ffmpeg program.
 #
@@ -204,7 +204,7 @@ foreach(row IN LISTS table)
     endforeach()
 endforeach()
 
-# The display rows (§8.3): transfer sRGB, primaries BT.709.
+# The display rows: transfer sRGB, primaries BT.709.
 set(scale_flags "accurate_rnd+full_chroma_int+bitexact")
 foreach(format IN ITEMS yuv444p yuv444p10le)
     if(NOT EXISTS "${dir}/clip_${format}.raw")

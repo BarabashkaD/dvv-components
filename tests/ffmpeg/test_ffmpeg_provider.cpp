@@ -1,5 +1,5 @@
-// The `ffmpeg` source provider against `ffmpeg -f framemd5` (M4 Task 5a; design v2 §4.4, §5.4, D5,
-// D28; v1.0 codec scope). Fixtures: tests/oracle/make-container-fixtures.cmake.
+// The `ffmpeg` source provider against `ffmpeg -f framemd5`.
+// Fixtures: tests/oracle/make-container-fixtures.cmake.
 
 #include <doctest/doctest.h>
 
@@ -57,7 +57,7 @@ using dvv::components::testing::TemporaryDirectory;
 
 using namespace std::chrono_literals;
 
-constexpr std::string_view SEQ = "seq.mkv";    // Task 0: FFV1 in MKV with pairs of equal pts
+constexpr std::string_view SEQ = "seq.mkv";    // FFV1 in MKV with pairs of equal pts
 constexpr std::string_view LONG = "long.mkv";  // 3000 frames, Sequential like SEQ
 
 // The FFV1/MKV formats of make-container-fixtures.cmake (gbrp is FFVHuff in the same name).
@@ -383,7 +383,7 @@ TEST_SUITE("ffmpeg") {
         checkColour(media::colourParams(tagged->info().desc.colour), container);
         CHECK(tagged->info().resolvedUri == base + "?fmt=yuv420p&size=352x288&fps=25&impl=ffmpeg");
 
-        // colour= (D5R): the standard replaces matrix, curve and primaries; the range stays.
+        // With colour=, the standard replaces matrix, curve and primaries; the range stays.
         const auto overridden = harness.open(uri + "?colour=bt601-ntsc");
         const media::ColourParams bt601{.matrix = media::ColourMatrix::Bt601,
                                         .range = media::ColourRange::Limited,
@@ -414,7 +414,7 @@ TEST_SUITE("ffmpeg") {
         CHECK(preset->info().resolvedUri ==
               base + "?fmt=yuv420p&size=352x288&fps=25&colour=bt2100-hlg&range=full&impl=ffmpeg");
 
-        // The removed keys name colour=<standard> (D5R §3.1).
+        // The removed keys name colour=<standard>.
         const dvv::Error removed = openError(harness, uri + "?matrix=bt601");
         CHECK(removed.code == dvv::Errc::Format);
         CHECK(removed.message ==
@@ -628,7 +628,7 @@ TEST_SUITE("ffmpeg") {
             CHECK(info.desc.width == 192);
             CHECK(info.desc.height == 144);
             CHECK(info.frameCount == 10);
-            // Task 0: AVI and NUT packets carry pts too, so every container is indexed.
+            // AVI and NUT packets carry pts too, so every container is indexed.
             CHECK(info.access == media::SourceAccess::RandomCostly);
             CHECK(info.fps == media::Rational{25, 1});
             checkFrames(harness, source, file, hashes, order);

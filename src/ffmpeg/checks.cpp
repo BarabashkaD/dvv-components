@@ -1,4 +1,4 @@
-// Pure parts of the FFmpeg loader (M4 design D3): the library checks and the search plan.
+// Pure parts of the FFmpeg loader: the library checks and the search plan.
 
 #include <filesystem>
 #include <format>

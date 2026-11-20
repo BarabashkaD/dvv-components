@@ -1,6 +1,6 @@
 #pragma once
 
-// The `ffmpeg` provider's container path (design v2 §4.4, D5, D28; v1.0 codec scope): open with
+// The `ffmpeg` provider's container path: open with
 // the lossless codec allowlist and the frame index, then the indexed and Sequential decode paths on
 // the source's worker.
 
@@ -37,7 +37,7 @@ struct ContainerTestHooks {
 // The decode state of one container source; after open it is touched only on its worker.
 class ContainerSupplier final : public IFrameSupplier {
 public:
-    // Open steps 2-8 (design v2 §4.4): avformat_open_input with protocol_whitelist=file and
+    // Open steps 2-8: avformat_open_input with protocol_whitelist=file and
     // codec_whitelist = LOSSLESS_CODECS (FFmpeg opens no other decoder, also while it probes), and
     // avformat_find_stream_info; the stream choice, the codec allowlist (before any scan or decoder
     // lookup; it also wins over a failed stream probe), the frame index (the container's own when
@@ -79,7 +79,7 @@ private:
         std::int64_t pts = 0;
         bool key = false;
     };
-    // The first frame's size and AVPixelFormat: every later frame must equal them (§5.4).
+    // The first frame's size and AVPixelFormat: every later frame must equal them.
     struct Expected {
         std::uint32_t width = 0, height = 0;
         int format = -1;
@@ -159,7 +159,7 @@ private:
 };
 
 // Open steps 2-12 for one `ffmpeg` URI, the `ffmpeg` provider's OpenSteps (it runs on the I/O
-// pool): the supplier, the catalogue format, the frame rate, the D28 query check, the colour, the
+// pool): the supplier, the catalogue format, the frame rate, the query check, the colour, the
 // resolved URI and the worker (which owns the supplier, with frame 0 in its ring). `stop` ends
 // the open with Errc::Cancelled "source request cancelled": before any FFmpeg call when it is
 // already stopped, else at the polls of the scan and of frame 0.

@@ -1,4 +1,4 @@
-// The FFmpeg oracle for display colour (M4 design v2 §8.3, E2): toDisplayReference with
+// The FFmpeg oracle for display colour: toDisplayReference with
 // encodeSrgb8 stays within 1 code value of swscale's accurate_rnd+full_chroma_int+bitexact rgb24.
 
 #include <doctest/doctest.h>

@@ -1,6 +1,6 @@
 #pragma once
 
-// The `ffmpeg` source provider (design v2 §4.4; v1.0 codec scope): files of any container FFmpeg
+// The `ffmpeg` source provider: files of any container FFmpeg
 // demuxes, lossless video codecs only, decoded on one worker thread per source. Private to
 // dvv-components (also used by the compile-fail test).
 
@@ -35,7 +35,7 @@ public:
     }
 
     [[nodiscard]] std::span<const std::string_view> schemes() const noexcept override;  // file
-    // No I/O: av_probe_input_format3 on a padded copy of the head (design v2 §4.4 match rule).
+    // No I/O: av_probe_input_format3 on a padded copy of the head.
     [[nodiscard]] media::Match match(const media::SourceRequest& request,
                                      std::span<const std::byte> head) const override;
     [[nodiscard]] Task<Result<std::unique_ptr<media::ISource>>> open(

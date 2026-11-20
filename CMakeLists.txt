@@ -39,7 +39,7 @@ add_library(dvv::components ALIAS dvv_components)
 set_target_properties(dvv_components PROPERTIES EXPORT_NAME components)
 target_link_libraries(dvv_components INTERFACE dvv::media)
 
-# FFmpeg of the third-party prefix: headers at build time, libraries at run time (M4 design D3).
+# FFmpeg of the third-party prefix: headers at build time, libraries at run time.
 find_package(dvv_ffmpeg_sdk REQUIRED CONFIG)
 
 # dvv_ffmpeg's private headers and FFmpeg's headers (system headers), for dvv_ffmpeg, the component
@@ -49,7 +49,7 @@ add_library(dvv_ffmpeg_internal INTERFACE)
 target_include_directories(dvv_ffmpeg_internal INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(dvv_ffmpeg_internal INTERFACE dvv::ffmpeg_headers)
 
-# The FFmpeg run-time binding (M4 design D3, §4.4): loader, function table, AVERROR mapping and log
+# The FFmpeg run-time binding: loader, function table, AVERROR mapping and log
 # routing. Public part: dvv/components/ffmpeg.h (status and loading; no FFmpeg types).
 add_library(dvv_ffmpeg STATIC
     src/ffmpeg/checks.cpp
@@ -69,7 +69,7 @@ target_link_libraries(dvv_components INTERFACE dvv::ffmpeg)
 # Component libraries (dvv_add_component) go here, before the install rules and the tests: the
 # installed package and the conformance test list them.
 
-# FFmpeg source providers (design v2 §4.4): loaded at run time, never linked (D3).
+# FFmpeg source providers: loaded at run time, never linked.
 dvv_add_component(ffmpeg
     SOURCES src/sources/ffmpeg_rules.cpp src/sources/frame_ring.cpp src/sources/av_worker.cpp
             src/sources/av_source.cpp src/sources/container_supplier.cpp

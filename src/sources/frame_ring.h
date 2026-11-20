@@ -1,6 +1,6 @@
 #pragma once
 
-// The last decoded frames of one FFmpeg or lavfi source (design v2 D5); used only on its worker.
+// The last decoded frames of one FFmpeg or lavfi source; used only on its worker.
 
 #include <cstddef>
 #include <cstdint>
