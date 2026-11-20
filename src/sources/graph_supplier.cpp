@@ -17,6 +17,7 @@
 #include "dvv/base/error.h"
 #include "dvv/base/uri.h"
 #include "dvv/media/pixel_format.h"
+#include "dvv/media/rate_size_text.h"
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
@@ -28,7 +29,6 @@ namespace dvv::components::detail {
 namespace {
 
 constexpr std::size_t OPEN_RING = 8;  // open step 2; resized in step 4
-constexpr media::Rational DEFAULT_FPS{25, 1};
 
 using ffmpeg::api;
 
@@ -290,7 +290,7 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
                                                    .primaries = first->color_primaries}));
     }
     media::ColourParams colour =
-        withBt601Hint(mapped.params, mapped.hint.bt601, media::descriptor(format->format).model);
+        withBt601Hint(mapped.params, mapped.hint.bt601, media::formatDesc(format->format).model);
     if (format->fullRange && colour.range == media::ColourRange::Unspecified) {
         colour.range = media::ColourRange::Full;
     }
@@ -304,8 +304,9 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
     const AVRational rate = supplier->frameRate();
     media::Rational fps = reduced({rate.num, rate.den});
     if (fps.num <= 0 || fps.den <= 0) {
-        fps = DEFAULT_FPS;
-        warnings.emplace_back("frame rate unknown, 25 fps assumed");
+        fps = media::FALLBACK_FPS;
+        warnings.push_back(std::format("frame rate unknown, {} fps assumed",
+                                       media::formatFps(media::FALLBACK_FPS)));
     }
 
     // 4. Every later frame is checked against frame 0; the ring gets its D5 size (frame 0 stays).

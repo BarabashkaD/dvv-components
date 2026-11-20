@@ -51,7 +51,7 @@ void compareDisplay(oracle::OracleHarness& harness, const oracle::OracleLine& li
     REQUIRE_MESSAGE(found.has_value(), "unknown format " << line.format);
     const media::FormatId format = found.value_or(media::FormatId{});
     const std::size_t components =
-        std::min<std::size_t>(media::descriptor(format).componentCount, 3);
+        std::min<std::size_t>(media::formatDesc(format).componentCount, 3);
     const media::ColourParams params{.matrix = matrixOf(line.matrix),
                                      .range = rangeOf(line.range),
                                      .transfer = media::TransferFn::Srgb,

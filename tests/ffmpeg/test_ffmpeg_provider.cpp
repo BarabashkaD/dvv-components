@@ -64,7 +64,7 @@ constexpr std::array<std::string_view, 18> FFV1_FORMATS{
     "yuv444p12le", "yuv420p16le", "yuv444p16le", "gbrp",        "gbrp10le",    "gbrp16le"};
 
 std::string formatName(const media::ISource& source) {
-    return media::descriptor(source.info().desc.format).name;
+    return media::formatDesc(source.info().desc.format).name;
 }
 
 // The MD5 of frame `index` of `source`; fails the test when it cannot be read.

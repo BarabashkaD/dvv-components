@@ -5,23 +5,21 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <format>
-#include <limits>
 #include <numeric>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 
 #include "dvv/base/error.h"
 #include "dvv/base/uri.h"
 #include "dvv/media/pixel_format.h"
+#include "dvv/media/rate_size_text.h"
 #include "dvv/media/types.h"
 #include "dvv/media/uri_colour.h"
 
@@ -36,11 +34,6 @@ constexpr int CONTENT_CONFIDENCE = 90;
 constexpr std::array<std::string_view, 3> EXCLUDED_DEMUXERS{"rawvideo", "yuv4mpegpipe",
                                                             "image2pipe"};
 constexpr std::array<std::string_view, 3> OWN_PARAMETERS{"fmt", "size", "fps"};
-// I.F frame rates: at most this many digits after the dot (10^9 fits an int64 denominator with
-// room for the integer part).
-constexpr std::size_t MAX_FRACTION_DIGITS = 9;
-constexpr std::uint64_t MAX_FPS_INTEGER = 1'000'000'000;
-
 // Calls `visit` for every comma-separated item of `list` until it returns true.
 template <class F>
 bool anyItem(std::string_view list, F visit) {
@@ -54,68 +47,6 @@ bool anyItem(std::string_view list, F visit) {
         }
         list.remove_prefix(comma + 1);
     }
-}
-
-std::optional<std::uint64_t> digits(std::string_view text) {
-    std::uint64_t value = 0;
-    const char* const begin = text.data();
-    const char* const end = begin + text.size();  // from_chars reads [begin, end) only
-    const auto [ptr, error] = std::from_chars(begin, end, value);
-    if (text.empty() || error != std::errc() || ptr != end) {
-        return std::nullopt;
-    }
-    return value;
-}
-
-// WxH with both dimensions in 1..65535 (M2's size form).
-std::optional<std::pair<std::uint32_t, std::uint32_t>> parseSize(std::string_view text) {
-    const std::size_t x = text.find('x');
-    if (x == std::string_view::npos) {
-        return std::nullopt;
-    }
-    const auto width = digits(text.substr(0, x));
-    const auto height = digits(text.substr(x + 1));
-    constexpr std::uint64_t MAX_DIMENSION = 65535;
-    if (!width || !height || *width == 0 || *height == 0 || *width > MAX_DIMENSION ||
-        *height > MAX_DIMENSION) {
-        return std::nullopt;
-    }
-    return std::pair{static_cast<std::uint32_t>(*width), static_cast<std::uint32_t>(*height)};
-}
-
-// N, N/D or I.F (M2's fps forms), reduced; nullopt for anything else or a zero value.
-std::optional<media::Rational> parseFps(std::string_view text) {
-    std::uint64_t num = 0;
-    std::uint64_t den = 1;
-    if (const std::size_t slash = text.find('/'); slash != std::string_view::npos) {
-        const auto n = digits(text.substr(0, slash));
-        const auto d = digits(text.substr(slash + 1));
-        if (!n || !d) {
-            return std::nullopt;
-        }
-        num = *n;
-        den = *d;
-    } else if (const std::size_t dot = text.find('.'); dot != std::string_view::npos) {
-        const std::string_view fraction = text.substr(dot + 1);
-        const auto i = digits(text.substr(0, dot));
-        const auto f = digits(fraction);
-        if (!i || !f || *i > MAX_FPS_INTEGER || fraction.size() > MAX_FRACTION_DIGITS) {
-            return std::nullopt;
-        }
-        for (std::size_t digit = 0; digit < fraction.size(); ++digit) {
-            den *= 10;
-        }
-        num = *i * den + *f;
-    } else if (const auto n = digits(text)) {
-        num = *n;
-    } else {
-        return std::nullopt;
-    }
-    constexpr auto MAX_INT64 = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
-    if (num == 0 || den == 0 || num > MAX_INT64 || den > MAX_INT64) {
-        return std::nullopt;
-    }
-    return reduced({static_cast<std::int64_t>(num), static_cast<std::int64_t>(den)});
 }
 
 bool sameFormat(std::string_view fmt, media::FormatId stream_format) {
@@ -201,10 +132,10 @@ Result<media::ColourSpec> checkContainerQuery(const Uri& uri, const ContainerFac
     DVV_TRY(const media::ColourSpec colour, media::colourSpecFromQuery(uri));
     if (const auto fmt = uri.param("fmt"); fmt && !sameFormat(*fmt, facts.format)) {
         return makeError(Errc::Format, std::format("fmt is set by the container ({})",
-                                                   media::descriptor(facts.format).name));
+                                                   media::formatDesc(facts.format).name));
     }
     if (const auto size = uri.param("size")) {
-        const auto parsed = parseSize(*size);
+        const auto parsed = media::parseSize(*size);
         if (!parsed || parsed->first != facts.width || parsed->second != facts.height) {
             return makeError(Errc::Format, std::format("size is set by the container ({}x{})",
                                                        facts.width, facts.height));
@@ -212,10 +143,10 @@ Result<media::ColourSpec> checkContainerQuery(const Uri& uri, const ContainerFac
     }
     if (const auto fps = uri.param("fps")) {
         const media::Rational stream_fps = reduced(facts.fps);
-        const auto parsed = parseFps(*fps);
+        const auto parsed = media::parseFps(*fps);
         if (!parsed || *parsed != stream_fps) {
-            return makeError(Errc::Format,
-                             std::format("fps is set by the container ({})", fpsText(stream_fps)));
+            return makeError(Errc::Format, std::format("fps is set by the container ({})",
+                                                       media::formatFps(stream_fps)));
         }
     }
     return colour;
@@ -395,13 +326,6 @@ std::optional<CatalogueFormat> catalogueFormat(std::string_view pix_fmt_name) {
         return CatalogueFormat{.format = alias->format, .fullRange = true};
     }
     return std::nullopt;
-}
-
-std::string fpsText(media::Rational fps) {
-    if (fps.den == 1) {
-        return std::format("{}", fps.num);
-    }
-    return std::format("{}/{}", fps.num, fps.den);
 }
 
 media::Rational reduced(media::Rational fps) noexcept {

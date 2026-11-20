@@ -77,7 +77,7 @@ std::invoke_result_t<Work&> bounded(const std::string& what, Work work) {
 }
 
 std::string formatName(const media::ISource& source) {
-    return media::descriptor(source.info().desc.format).name;
+    return media::formatDesc(source.info().desc.format).name;
 }
 
 std::shared_ptr<media::ISource> takeSource(

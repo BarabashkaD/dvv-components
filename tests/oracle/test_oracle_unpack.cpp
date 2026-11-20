@@ -85,7 +85,7 @@ void compareUnpack(oracle::OracleHarness& harness, const oracle::OracleLine& lin
     const auto found = media::findFormat(line.format);
     REQUIRE_MESSAGE(found.has_value(), "unknown format " << line.format);
     const media::FormatId format = found.value_or(media::FormatId{});
-    const media::PixelFormatDescriptor& desc = media::descriptor(format);
+    const media::PixelFormatDesc& desc = media::formatDesc(format);
     const auto geometry = media::geometry(media::unpackedFormat(format), line.width, line.height);
     REQUIRE_MESSAGE(geometry.has_value(), geometry.error().describe());
     REQUIRE(geometry->planeCount == desc.componentCount);
@@ -176,7 +176,7 @@ TEST_SUITE("oracle") {
         }
         std::set<std::string> names;
         for (const media::FormatId format : media::catalogue()) {
-            names.insert(media::descriptor(format).name);
+            names.insert(media::formatDesc(format).name);
         }
         CHECK(names.size() == 37);
         std::set<std::string> missing;

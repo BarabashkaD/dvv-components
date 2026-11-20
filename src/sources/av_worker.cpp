@@ -111,7 +111,7 @@ Result<media::FrameRef> copyAndPublish(const AVFrame& frame, const media::FrameD
         ffmpeg::api().av_pix_fmt_count_planes(static_cast<AVPixelFormat>(frame.format));
     if (av_planes != layout.planeCount) {
         return makeError(Errc::Internal, std::format("{} has {} planes, the decoder's frame {}",
-                                                     media::descriptor(desc.format).name,
+                                                     media::formatDesc(desc.format).name,
                                                      layout.planeCount, av_planes));
     }
     DVV_TRY(const std::shared_ptr<media::HostFrame> host,

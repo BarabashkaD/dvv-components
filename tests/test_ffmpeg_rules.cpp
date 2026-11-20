@@ -405,11 +405,13 @@ TEST_SUITE("ffmpeg_rules") {
         CHECK_FALSE(detail::catalogueFormat("bgr0").has_value());
     }
 
-    TEST_CASE("ffmpeg rules: fps text") {
-        CHECK(detail::fpsText({25, 1}) == "25");
-        CHECK(detail::fpsText({30000, 1001}) == "30000/1001");
+    TEST_CASE("ffmpeg rules: reduced rates") {
         CHECK(detail::reduced({50, 2}) == media::Rational{25, 1});
         CHECK(detail::reduced({60000, 2002}) == media::Rational{30000, 1001});
+    }
+
+    TEST_CASE("ffmpeg rules: the container's rate defaults to FALLBACK_FPS") {
+        CHECK(detail::ContainerFacts{}.fps == media::FALLBACK_FPS);
     }
 
     TEST_CASE("ffmpeg rules: lossless codec allowlist") {

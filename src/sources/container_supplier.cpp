@@ -24,6 +24,7 @@
 #include "dvv/base/uri.h"
 #include "dvv/base/utf8.h"
 #include "dvv/media/pixel_format.h"
+#include "dvv/media/rate_size_text.h"
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "dvv/media/uri_colour.h"
@@ -34,8 +35,6 @@
 
 namespace dvv::components::detail {
 namespace {
-
-constexpr media::Rational DEFAULT_FPS{25, 1};
 
 Error sourceClosed() {
     return Error{.code = Errc::Internal, .message = "source closed", .where = {}, .cause = nullptr};
@@ -562,8 +561,9 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
     const AVRational guessed = supplier->guessedFrameRate();
     media::Rational fps = reduced({guessed.num, guessed.den});
     if (fps.num <= 0 || fps.den <= 0) {
-        fps = DEFAULT_FPS;
-        warnings.emplace_back("frame rate unknown, 25 fps assumed");
+        fps = media::FALLBACK_FPS;
+        warnings.push_back(std::format("frame rate unknown, {} fps assumed",
+                                       media::formatFps(media::FALLBACK_FPS)));
     }
     DVV_TRY(const media::ColourSpec query,
             checkContainerQuery(
@@ -587,7 +587,7 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
     if (mapped.hint.nonStandard) {
         notes.push_back(nonStandardNote(tags));
     }
-    const media::ColourModel model = media::descriptor(format->format).model;
+    const media::ColourModel model = media::formatDesc(format->format).model;
     media::ColourParams file_colour = withBt601Hint(mapped.params, mapped.hint.bt601, model);
     if (format->fullRange && file_colour.range == media::ColourRange::Unspecified) {
         file_colour.range = media::ColourRange::Full;
@@ -604,9 +604,9 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
     resolved.scheme = "file";
     resolved.path = uri.path;
     resolved.params = {
-        {"fmt", media::descriptor(format->format).name},
+        {"fmt", media::formatDesc(format->format).name},
         {"size", std::format("{}x{}", width, height)},
-        {"fps", fpsText(fps)},
+        {"fps", media::formatFps(fps)},
     };
     std::ranges::move(media::colourParameters(query), std::back_inserter(resolved.params));
     resolved.params.emplace_back("impl", "ffmpeg");

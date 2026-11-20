@@ -109,7 +109,7 @@ inline constexpr std::array<std::string_view, 61> LAVFI_FILE_FILTERS{
 struct ContainerFacts {
     media::FormatId format = 0;
     std::uint32_t width = 0, height = 0;
-    media::Rational fps{25, 1};
+    media::Rational fps = media::FALLBACK_FPS;
 };
 // D28 query check of an `ffmpeg` URI. Allowed names: fmt, size, fps, COLOUR_PARAMETERS (colour,
 // range; D5R) and impl. Errc::Format: media::unknownParameterText(name) (the removed keys matrix,
@@ -185,8 +185,6 @@ struct CatalogueFormat {
 };
 [[nodiscard]] std::optional<CatalogueFormat> catalogueFormat(std::string_view pix_fmt_name);
 
-// "N" when den == 1, else "N/D" (M2's resolved-URI form).
-[[nodiscard]] std::string fpsText(media::Rational fps);
 // num/den reduced by the gcd; den > 0 (0/0 is returned unchanged).
 [[nodiscard]] media::Rational reduced(media::Rational fps) noexcept;
 

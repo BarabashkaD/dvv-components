@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -134,7 +135,7 @@ void checkError(const dvv::Error& error, dvv::Errc code, std::string_view text) 
 }
 
 std::string formatName(const media::ISource& source) {
-    return media::descriptor(source.info().desc.format).name;
+    return media::formatDesc(source.info().desc.format).name;
 }
 
 constexpr std::string_view GRAPH_1 = "testsrc2=s=352x288:r=25,format=yuv420p";
@@ -348,9 +349,9 @@ TEST_SUITE("ffmpeg") {
         // Relative with '/' separators: no drive letter, so no ':' to escape inside the graph.
         const std::filesystem::path clip =
             dvv::components::testing::fixture("lossless_huffyuv.avi");
-        const std::u8string relative =
-            std::filesystem::relative(clip, std::filesystem::current_path()).generic_u8string();
-        const std::string rel(relative.begin(), relative.end());
+        std::string rel =
+            dvv::pathText(std::filesystem::relative(clip, std::filesystem::current_path()));
+        std::ranges::replace(rel, '\\', '/');
         REQUIRE_FALSE(rel.empty());
         REQUIRE(rel.find(':') == std::string::npos);
         // Not on the allowlist (security review): file and URL sources, a QR source and drawtext
