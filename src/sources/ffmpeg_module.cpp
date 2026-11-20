@@ -83,5 +83,5 @@ ModuleLoad moduleLoadOf(const FfmpegStatus& status, SearchSource source) {
 
 }  // namespace detail
 
-DVV_REGISTER_MODULE(FfmpegModule);  // at namespace scope, as DVV_REGISTER is used today
+DVV_REGISTER_MODULE(FfmpegModule);
 }  // namespace dvv::components
