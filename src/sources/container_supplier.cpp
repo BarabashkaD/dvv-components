@@ -536,19 +536,21 @@ Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
                 api.av_packet_unref(packet);
                 continue;
             }
+            // Tracked until it is sent: a stop (or a throwing test hook) keeps it for the next
+            // call.
+            pending_packet_ = true;
             if (hooks_.afterPacketRead) {
                 hooks_.afterPacketRead();
             }
             if (stopped()) {
-                pending_packet_ = true;  // kept for the next call
                 return std::unexpected(stopAtPoll(stopped));
             }
         }
-        pending_packet_ = false;
         // An injected failure drops the packet, as a failed send does.
         const std::optional<int> failure = hooks_.sendFailure ? hooks_.sendFailure() : std::nullopt;
         const int sent = failure ? *failure : api.avcodec_send_packet(codec_.get(), packet);
         api.av_packet_unref(packet);
+        pending_packet_ = false;
         if (sent < 0) {
             return std::unexpected(ffmpeg::ffmpegError("avcodec_send_packet", sent));
         }

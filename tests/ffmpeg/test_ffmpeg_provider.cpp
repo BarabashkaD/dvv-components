@@ -793,8 +793,9 @@ TEST_SUITE("ffmpeg") {
     TEST_CASE("ffmpeg: a stop after a packet read keeps the source in step") {
         // One worker stands for a source that two origins share: a stopped request must leave
         // the decoder where the next request expects it. The stop comes after the Kth packet
-        // read, before its send. The indexed file is intra-only, so a request may read only one
-        // packet; it has 10 frames, so its run starts at frame 5.
+        // read, before its send. Dropping that packet breaks both files. On the indexed file a
+        // request may seek to a key frame and read few packets, so its run stops at the first
+        // read; the file has 10 frames, so its run starts at frame 5.
         struct Run {
             std::string_view file;
             std::string_view reference;
@@ -833,6 +834,37 @@ TEST_SUITE("ffmpeg") {
                 CHECK(fetchHashes(**made, **pool, run.first, 4) ==
                       referenceRange(hashes, run.first, 4));
             }
+        }
+    }
+
+    TEST_CASE("ffmpeg: a stop at a poll costs no reset") {
+        // A Sequential source stopped after the 3rd packet read decodes on from where it stopped:
+        // no restart from frame 0.
+        auto opened = detail::ContainerSupplier::open(fixturePath(SEQ), running());
+        CHECK_MESSAGE(opened.has_value(), (opened ? std::string() : opened.error().describe()));
+        if (opened) {
+            detail::ContainerSupplier& supplier = **opened;
+            CHECK(supplier.sequential());
+            std::atomic<int> reads{0};
+            std::stop_source stop;
+            const auto stop_at_third_read = [&] {
+                if (++reads == 3) {
+                    stop.request_stop();
+                }
+            };
+            supplier.setHooksForTest({.afterPacketRead = stop_at_third_read});
+            const std::int64_t resets = supplier.resets();
+            detail::StopCheck stopping = running();
+            stopping.token = stop.get_token();
+            const auto stopped = supplier.frame(10, stopping);
+            CHECK_FALSE(stopped.has_value());
+            if (!stopped) {
+                CHECK(stopped.error().code == dvv::Errc::Cancelled);
+            }
+            CHECK(reads.load() >= 3);  // the hook fired
+            const auto next = supplier.frame(10, running());
+            CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+            CHECK(supplier.resets() == resets);
         }
     }
 
