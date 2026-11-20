@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <stop_token>
 #include <utility>
+#include <vector>
 
 #include "dvv/base/error.h"
 #include "dvv/base/executor.h"
@@ -81,6 +82,35 @@ std::unique_ptr<IFrameSupplier> wrapForTest(std::unique_ptr<IFrameSupplier> supp
     return wrapper ? wrapper(std::move(supplier)) : std::move(supplier);
 }
 
+// Copies the planes of `frame` row by row into `out`, which has the tight catalogue geometry of
+// `desc`. Errc::Internal when the catalogue plane count differs from av_pix_fmt_count_planes.
+Result<void> copyTight(const AVFrame& frame, const media::FrameDesc& desc,
+                       std::span<std::byte> out) {
+    DVV_TRY(const media::FrameGeometry layout,
+            media::geometry(desc.format, desc.width, desc.height));
+    const int av_planes =
+        ffmpeg::api().av_pix_fmt_count_planes(static_cast<AVPixelFormat>(frame.format));
+    if (av_planes != layout.planeCount) {
+        return makeError(Errc::Internal, std::format("{} has {} planes, the decoder's frame {}",
+                                                     media::formatDesc(desc.format).name,
+                                                     layout.planeCount, av_planes));
+    }
+    // Copied, not wrapped: the decoder's planes may be padded (linesize above the row size) or
+    // bottom-up (negative linesize), and a catalogue original has the tight geometry. One copy per
+    // frame, at the source boundary.
+    for (std::size_t p = 0; p < layout.planeCount; ++p) {
+        const media::PlaneGeometry& plane = layout.planes[p];
+        const auto* source = reinterpret_cast<const std::byte*>(frame.data[p]);
+        const std::ptrdiff_t source_stride = frame.linesize[p];
+        for (std::uint32_t row = 0; row < plane.rows; ++row) {
+            std::memcpy(
+                out.data() + plane.offset + (static_cast<std::uint64_t>(row) * plane.stride),
+                source + (static_cast<std::ptrdiff_t>(row) * source_stride), plane.rowBytes);
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 void setSupplierWrapperForTest(SupplierWrapper wrapper) {
@@ -118,29 +148,9 @@ Result<media::FrameRef> copyAndPublish(const AVFrame& frame, const media::FrameD
                                        media::ProduceContext& ctx) {
     DVV_TRY(const media::FrameGeometry layout,
             media::geometry(desc.format, desc.width, desc.height));
-    const int av_planes =
-        ffmpeg::api().av_pix_fmt_count_planes(static_cast<AVPixelFormat>(frame.format));
-    if (av_planes != layout.planeCount) {
-        return makeError(Errc::Internal, std::format("{} has {} planes, the decoder's frame {}",
-                                                     media::formatDesc(desc.format).name,
-                                                     layout.planeCount, av_planes));
-    }
     DVV_TRY(const std::shared_ptr<media::HostFrame> host,
             ctx.allocateHost(desc, layout.bytes, HOST_ALIGNMENT, 0));
-    const std::span<std::byte> out = host->data();
-    // Copied, not wrapped: the decoder's planes may be padded (linesize above the row size) or
-    // bottom-up (negative linesize), and a catalogue original has the tight geometry. One copy per
-    // frame, at the source boundary.
-    for (std::size_t p = 0; p < layout.planeCount; ++p) {
-        const media::PlaneGeometry& plane = layout.planes[p];
-        const auto* source = reinterpret_cast<const std::byte*>(frame.data[p]);
-        const std::ptrdiff_t source_stride = frame.linesize[p];
-        for (std::uint32_t row = 0; row < plane.rows; ++row) {
-            std::memcpy(
-                out.data() + plane.offset + (static_cast<std::uint64_t>(row) * plane.stride),
-                source + (static_cast<std::ptrdiff_t>(row) * source_stride), plane.rowBytes);
-        }
-    }
+    DVV_TRY_VOID(copyTight(frame, desc, host->data()));
     return ctx.publish(host);
 }
 
@@ -201,7 +211,8 @@ Task<Result<media::FrameRef>> AvWorker::produce(std::int64_t index, media::Produ
     co_return result;
 }
 
-Task<Result<void>> AvWorker::fetch(std::int64_t index, IExecutor& resume_on, std::stop_token stop) {
+Task<Result<void>> AvWorker::fetch(std::int64_t index, IExecutor& resume_on, std::stop_token stop,
+                                   std::vector<std::byte>* bytes) {
     co_await toWorker();
     Result<void> result = [&]() -> Result<void> {
         try {
@@ -209,7 +220,14 @@ Task<Result<void>> AvWorker::fetch(std::int64_t index, IExecutor& resume_on, std
             if (!frame) {
                 return std::unexpected(std::move(frame).error());
             }
-            return {};
+            if (bytes == nullptr) {
+                return {};
+            }
+            // On the worker: the frame is valid until the supplier's next call.
+            DVV_TRY(const media::FrameGeometry layout,
+                    media::geometry(desc_.format, desc_.width, desc_.height));
+            bytes->resize(static_cast<std::size_t>(layout.bytes));
+            return copyTight(**frame, desc_, *bytes);
         } catch (...) {
             return std::unexpected(errorFromException());
         }

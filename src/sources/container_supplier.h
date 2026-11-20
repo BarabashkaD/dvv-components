@@ -6,10 +6,12 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "dvv/base/error.h"
@@ -22,6 +24,15 @@
 #include "sources/frame_ring.h"
 
 namespace dvv::components::detail {
+
+// Test seam of ContainerSupplier: empty in production.
+struct ContainerTestHooks {
+    // Called after av_read_frame read a packet of the stream, before the poll before the send.
+    std::function<void()> afterPacketRead{};
+    // When set and returning a value: the packet is dropped instead of sent, and that value is
+    // used as avcodec_send_packet's result (an injected failure).
+    std::function<std::optional<int>()> sendFailure{};
+};
 
 // The decode state of one container source; after open it is touched only on its worker.
 class ContainerSupplier final : public IFrameSupplier {
@@ -60,6 +71,8 @@ public:
 
     // Test seam (an injected reopen failure): later reopens open `path_utf8` instead.
     void setPathForTest(const std::string& path_utf8) { url_ = "file:" + path_utf8; }
+    // Test seam: the hooks of every later request (the test open sets them after frame 0).
+    void setHooksForTest(ContainerTestHooks hooks) { hooks_ = std::move(hooks); }
 
 private:
     struct Entry {
@@ -96,6 +109,10 @@ private:
     // Reads the next packet of the stream and sends it to the decoder; the drain packet at the
     // demuxer's end.
     [[nodiscard]] Result<void> sendNextPacket(const StopCheck& stopped);
+    // A stop at a poll: sets ended_at_poll_, returns stopped.error().
+    [[nodiscard]] Error stopAtPoll(const StopCheck& stopped);
+    // Seeks and restarts drop a pending packet (av_packet_unref, flag cleared) first.
+    void dropPendingPacket() noexcept;
     // The index of a decoded frame (Sequential: the next number; indexed: the entry of its pts),
     // nullopt when it is dropped.
     [[nodiscard]] std::optional<std::int64_t> indexOf(const AVFrame& frame);
@@ -132,6 +149,12 @@ private:
     // Set by decodeUntil when frame `index` was damaged: the decoder is still in step, so frame()
     // does not reset.
     bool kept_position_ = false;
+    // A packet read before a stop and not sent yet: the next sendNextPacket() sends it first. A
+    // seek or a restart drops it.
+    bool pending_packet_ = false;
+    // The last decode ended at a stop poll: the decoder is in step, so frame() does not reset.
+    bool ended_at_poll_ = false;
+    ContainerTestHooks hooks_;  // empty in production
     std::optional<Expected> expected_;
 };
 
@@ -142,9 +165,10 @@ private:
 // already stopped, else at the polls of the scan and of frame 0.
 [[nodiscard]] Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop);
 
-// Test seam (stop test): the worker of a file opened with the same code as open (no query).
+// The worker of a file opened with the same code as open (no query); the hooks are set after the
+// open has decoded frame 0, so they see only the requests' packets.
 [[nodiscard]] Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(
-    const std::filesystem::path& path);
+    const std::filesystem::path& path, ContainerTestHooks hooks = {});
 
 // Test seam (the single-thread TSan case): the decoder thread_count of every later open; 0 (the
 // default) lets FFmpeg choose, 1 starts no FFmpeg threads. Thread-safe.

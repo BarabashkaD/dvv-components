@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "dvv/base/error.h"
+#include "dvv/base/executor.h"
 #include "dvv/base/executors.h"
 #include "dvv/base/lifetime.h"
 #include "dvv/base/log.h"
@@ -44,6 +45,7 @@
 namespace {
 
 namespace media = dvv::media;
+namespace detail = dvv::components::detail;
 using dvv::components::testing::FfmpegHarness;
 using dvv::components::testing::fixture;
 using dvv::components::testing::fixturePath;
@@ -179,6 +181,32 @@ std::pair<std::string, std::vector<std::byte>> relabelledAvi(const TemporaryDire
 // A StopCheck that never stops (no flag, the current generation).
 dvv::components::detail::StopCheck running() {
     return {.flag = nullptr, .generation = dvv::components::ffmpeg::stopGeneration()};
+}
+
+// The MD5s of frames first..first+count-1, fetched one by one with no token (an empty string for a
+// failed fetch).
+std::vector<std::string> fetchHashes(detail::AvWorker& worker, dvv::IExecutor& io,
+                                     std::int64_t first, int count) {
+    std::vector<std::string> hashes;
+    for (std::int64_t index = first; index < first + count; ++index) {
+        std::vector<std::byte> bytes;
+        const dvv::Result<void> fetched = dvv::syncWait(worker.fetch(index, io, {}, &bytes));
+        CHECK_MESSAGE(
+            fetched.has_value(),
+            "frame " << index << ": " << (fetched ? std::string() : fetched.error().describe()));
+        hashes.push_back(fetched ? md5Hex(bytes) : std::string());
+    }
+    return hashes;
+}
+
+// The reference MD5s of frames first..first+count-1.
+std::vector<std::string> referenceRange(
+    const std::vector<dvv::components::testing::FrameHash>& hashes, std::int64_t first, int count) {
+    std::vector<std::string> values;
+    for (std::int64_t index = first; index < first + count; ++index) {
+        values.push_back(hashes.at(static_cast<std::size_t>(index)).md5);
+    }
+    return values;
 }
 
 // Field by field, so a failure names the field.
@@ -546,8 +574,7 @@ TEST_SUITE("ffmpeg") {
                 CHECK(read.error().code == dvv::Errc::Cancelled);
             }
 
-            // The source is not closed: attached again, it reads through the new origin, and
-            // its decoder is in step.
+            // The source is not closed: attached again, the new origin returns the right frame.
             [[maybe_unused]] const auto reattached = harness.reattach(source);
             const auto ours = harness.originalBytes(source, 5);
             const auto expected = harness.originalBytes(harness.open(fixtureUri(LONG)), 5);
@@ -760,6 +787,84 @@ TEST_SUITE("ffmpeg") {
             // The worker is not closed: the next request runs.
             const dvv::Result<void> next = dvv::syncWait((*made)->fetch(1, **pool));
             CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+        }
+    }
+
+    TEST_CASE("ffmpeg: a stop after a packet read keeps the source in step") {
+        // One worker stands for a source that two origins share: a stopped request must leave
+        // the decoder where the next request expects it. The stop comes after the Kth packet
+        // read, before its send. The indexed file is intra-only, so a request may read only one
+        // packet; it has 10 frames, so its run starts at frame 5.
+        struct Run {
+            std::string_view file;
+            std::string_view reference;
+            std::int64_t first = 0;
+            int stop_at = 0;
+        };
+        const std::array<Run, 2> runs{
+            Run{.file = SEQ, .reference = "seq.framemd5", .first = 10, .stop_at = 3},
+            Run{.file = "ffv1_yuv420p.mkv",
+                .reference = "ffv1_yuv420p.framemd5",
+                .first = 5,
+                .stop_at = 1}};
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        for (const Run& run : runs) {
+            CAPTURE(run.file);
+            const auto hashes = referenceHashes(run.reference);
+            std::atomic<int> reads{0};
+            std::stop_source stop;
+            const auto stop_at_kth_read = [&] {
+                if (++reads == run.stop_at) {
+                    stop.request_stop();
+                }
+            };
+            auto made = detail::makeContainerWorkerForTest(fixture(run.file),
+                                                           {.afterPacketRead = stop_at_kth_read});
+            CHECK_MESSAGE(made.has_value(), (made ? std::string() : made.error().describe()));
+            if (made && pool) {
+                const dvv::Result<void> stopped =
+                    dvv::syncWait((*made)->fetch(run.first, **pool, stop.get_token()));
+                CHECK_FALSE(stopped.has_value());
+                if (!stopped) {
+                    CHECK(stopped.error().code == dvv::Errc::Cancelled);
+                }
+                CHECK(reads.load() >= run.stop_at);  // the hook fired
+                CHECK(fetchHashes(**made, **pool, run.first, 4) ==
+                      referenceRange(hashes, run.first, 4));
+            }
+        }
+    }
+
+    TEST_CASE("ffmpeg: a real error in a stopped request still resets") {
+        // The 3rd packet's send fails, and the request's token is stopped by then: the error
+        // wins, and the source resets, so the next requests get the right frames.
+        constexpr std::int64_t FIRST = 10;
+        const auto hashes = referenceHashes("seq.framemd5");
+        std::atomic<int> sends{0};
+        std::stop_source stop;
+        const auto fail_third_send = [&]() -> std::optional<int> {
+            if (++sends != 3) {
+                return std::nullopt;
+            }
+            stop.request_stop();
+            return AVERROR_INVALIDDATA;
+        };
+        auto made =
+            detail::makeContainerWorkerForTest(fixture(SEQ), {.sendFailure = fail_third_send});
+        CHECK_MESSAGE(made.has_value(), (made ? std::string() : made.error().describe()));
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        if (made && pool) {
+            const dvv::Result<void> failed =
+                dvv::syncWait((*made)->fetch(FIRST, **pool, stop.get_token()));
+            CHECK_FALSE(failed.has_value());
+            if (!failed) {
+                CAPTURE(failed.error().describe());
+                CHECK(failed.error().code == dvv::Errc::Format);
+            }
+            CHECK(sends.load() >= 3);  // the hook fired
+            CHECK(fetchHashes(**made, **pool, FIRST, 4) == referenceRange(hashes, FIRST, 4));
         }
     }
 

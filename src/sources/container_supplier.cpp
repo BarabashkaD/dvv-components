@@ -280,6 +280,7 @@ Result<void> ContainerSupplier::scanIndex(AVFormatContext& format, const StopChe
 }
 
 Result<void> ContainerSupplier::reopen() {
+    dropPendingPacket();
     // Until the reopen succeeds every request restarts (and retries it): a failed reopen leaves no
     // format context, or one of a changed file, that a forward request must not read.
     needs_reset_ = true;
@@ -335,10 +336,12 @@ Result<const AVFrame*> ContainerSupplier::frame(std::int64_t index, const StopCh
         }
     }
     kept_position_ = false;
+    ended_at_poll_ = false;
     Result<const AVFrame*> decoded = decodeUntil(index, stopped);
     // The decoder stopped mid-stream: Sequential numbers would shift. A damaged frame `index`
-    // keeps the decoder in step instead: the next request decodes on.
-    if (!decoded && !kept_position_ && !stopped()) {
+    // keeps the decoder in step instead, and so does a stop at a poll: the next request decodes
+    // on. A real error resets, also when the request's token is stopped by then.
+    if (!decoded && !kept_position_ && !ended_at_poll_) {
         needs_reset_ = true;
     }
     return decoded;
@@ -358,6 +361,7 @@ Result<void> ContainerSupplier::restart() {
 
 Result<void> ContainerSupplier::seekTo(std::int64_t index) {
     ++resets_;
+    dropPendingPacket();
     // The last keyframe entry at or before `index` (entry 0 when none is flagged).
     std::int64_t key = 0;
     for (std::int64_t entry = index; entry >= 0; --entry) {
@@ -428,7 +432,7 @@ Result<const AVFrame*> ContainerSupplier::decodeUntil(std::int64_t index,
     AVFrame* const decoded = scratch_.get();
     while (true) {
         if (stopped()) {
-            return std::unexpected(stopped.error());
+            return std::unexpected(stopAtPoll(stopped));
         }
         const int result = api.avcodec_receive_frame(codec_.get(), decoded);
         if (result == 0) {
@@ -495,34 +499,55 @@ Result<const AVFrame*> ContainerSupplier::decodeUntil(std::int64_t index,
     }
 }
 
+Error ContainerSupplier::stopAtPoll(const StopCheck& stopped) {
+    ended_at_poll_ = true;
+    return stopped.error();
+}
+
+void ContainerSupplier::dropPendingPacket() noexcept {
+    if (pending_packet_) {
+        ffmpeg::api().av_packet_unref(packet_.get());
+        pending_packet_ = false;
+    }
+}
+
 Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
     const ffmpeg::Api& api = ffmpeg::api();
     AVPacket* const packet = packet_.get();
     while (true) {
         if (stopped()) {
-            return std::unexpected(stopped.error());
+            return std::unexpected(stopAtPoll(stopped));
         }
-        const int read = api.av_read_frame(format_.get(), packet);
-        if (read == AVERROR_EOF) {
-            demuxer_end_ = true;
-            if (const int sent = api.avcodec_send_packet(codec_.get(), nullptr);
-                sent < 0 && sent != AVERROR_EOF) {
-                return std::unexpected(ffmpeg::ffmpegError("avcodec_send_packet", sent));
+        // A packet read before a stop is sent before another is read: the decoder stays in step.
+        if (!pending_packet_) {
+            const int read = api.av_read_frame(format_.get(), packet);
+            if (read == AVERROR_EOF) {
+                demuxer_end_ = true;
+                if (const int sent = api.avcodec_send_packet(codec_.get(), nullptr);
+                    sent < 0 && sent != AVERROR_EOF) {
+                    return std::unexpected(ffmpeg::ffmpegError("avcodec_send_packet", sent));
+                }
+                return {};
             }
-            return {};
+            if (read < 0) {
+                return std::unexpected(ffmpeg::ffmpegError("av_read_frame", read));
+            }
+            if (packet->stream_index != stream_ || (packet->flags & AV_PKT_FLAG_DISCARD) != 0) {
+                api.av_packet_unref(packet);
+                continue;
+            }
+            if (hooks_.afterPacketRead) {
+                hooks_.afterPacketRead();
+            }
+            if (stopped()) {
+                pending_packet_ = true;  // kept for the next call
+                return std::unexpected(stopAtPoll(stopped));
+            }
         }
-        if (read < 0) {
-            return std::unexpected(ffmpeg::ffmpegError("av_read_frame", read));
-        }
-        if (packet->stream_index != stream_ || (packet->flags & AV_PKT_FLAG_DISCARD) != 0) {
-            api.av_packet_unref(packet);
-            continue;
-        }
-        if (stopped()) {
-            api.av_packet_unref(packet);
-            return std::unexpected(stopped.error());
-        }
-        const int sent = api.avcodec_send_packet(codec_.get(), packet);
+        pending_packet_ = false;
+        // An injected failure drops the packet, as a failed send does.
+        const std::optional<int> failure = hooks_.sendFailure ? hooks_.sendFailure() : std::nullopt;
+        const int sent = failure ? *failure : api.avcodec_send_packet(codec_.get(), packet);
         api.av_packet_unref(packet);
         if (sent < 0) {
             return std::unexpected(ffmpeg::ffmpegError("avcodec_send_packet", sent));
@@ -533,7 +558,10 @@ Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
 
 // ---- open steps 8-12 ----
 
-Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop) {
+namespace {
+
+// The body of openContainer and makeContainerWorkerForTest: `hooks` are set after frame 0.
+Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, ContainerTestHooks hooks) {
     // A stop before the open: no file is opened.
     if (stop.stop_requested()) {
         return makeError(Errc::Cancelled, "source request cancelled");
@@ -545,6 +573,7 @@ Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop) {
     const StopCheck opening{.flag = nullptr, .generation = generation, .token = std::move(stop)};
     DVV_TRY(std::unique_ptr<ContainerSupplier> supplier,
             ContainerSupplier::open(uri.path, opening));
+    supplier->setHooksForTest(std::move(hooks));
 
     // 8. The catalogue format of the decoder's output.
     const AVFrame& first = supplier->firstFrame();
@@ -633,11 +662,18 @@ Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop) {
     return opened;
 }
 
-Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(const std::filesystem::path& path) {
+}  // namespace
+
+Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop) {
+    return openWithHooks(uri, std::move(stop), {});
+}
+
+Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(const std::filesystem::path& path,
+                                                             ContainerTestHooks hooks) {
     Uri uri;
     uri.scheme = "file";
     uri.path = pathText(path);
-    DVV_TRY(OpenedSource opened, openContainer(uri, std::stop_token{}));
+    DVV_TRY(OpenedSource opened, openWithHooks(uri, std::stop_token{}, std::move(hooks)));
     return std::move(opened.worker);
 }
 

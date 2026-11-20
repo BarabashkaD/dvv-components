@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <stop_token>
+#include <vector>
 
 #include "dvv/base/error.h"
 #include "dvv/base/executor.h"
@@ -96,9 +97,11 @@ public:
     [[nodiscard]] Task<Result<media::FrameRef>> produce(std::int64_t index,
                                                         media::ProduceContext& ctx);
     // Test seam: the same path without a ProduceContext; resumes on `resume_on`. `stop` is the
-    // request's token (none by default).
+    // request's token (none by default). When `bytes` is set and the request succeeds, it holds the
+    // frame's planes in the tight catalogue geometry (the copy of copyAndPublish).
     [[nodiscard]] Task<Result<void>> fetch(std::int64_t index, IExecutor& resume_on,
-                                           std::stop_token stop = {});
+                                           std::stop_token stop = {},
+                                           std::vector<std::byte>* bytes = nullptr);
     // Requests that entered produce/fetch and have not left the worker yet (tests).
     [[nodiscard]] std::size_t queued() const noexcept;
 
