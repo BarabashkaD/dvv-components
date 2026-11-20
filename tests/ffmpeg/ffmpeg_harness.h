@@ -30,10 +30,10 @@
 
 namespace dvv::components::testing {
 
-// cpu and io pools of 4 threads, the registry (capabilities from
-// addFfmpegCapabilities(loadFfmpeg()) and every linked component), a SourceFactory and a host-only
-// FrameStore. The destructor detaches every attached source, then destroys the store, the factory,
-// the registry and the pools.
+// cpu and io pools of 4 threads, the registry (ComponentRegistry::load(): the FFmpeg module's
+// capabilities and every linked component), a SourceFactory and a host-only FrameStore. The
+// destructor detaches every attached source, then destroys the store, the factory, the registry and
+// the pools.
 class FfmpegHarness {
 public:
     FfmpegHarness();

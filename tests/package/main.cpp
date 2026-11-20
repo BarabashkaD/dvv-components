@@ -11,12 +11,10 @@ int main() {
     auto registry = dvv::ComponentRegistry::create(dvv::Capabilities{});
     const std::size_t sources = registry->list<dvv::media::ISourceProvider>().size();
     registry.reset();
-    // The installed dvv::ffmpeg links (no FFmpeg is loaded).
-    const dvv::components::FfmpegStatus status;
-    dvv::Capabilities caps;
-    dvv::components::addFfmpegCapabilities(status, caps);
-    if (!caps.names().empty()) {
-        std::fprintf(stderr, "addFfmpegCapabilities added a capability without FFmpeg\n");
+    // The installed FFmpeg module is linked: load() lists it, whether FFmpeg loads or not.
+    const auto loaded = dvv::ComponentRegistry::load();
+    if (loaded->module(dvv::components::FFMPEG_MODULE) == nullptr) {
+        std::fprintf(stderr, "ComponentRegistry::load() does not list the FFmpeg module\n");
         return 1;
     }
     std::printf("dvv_components package works (%zu source components)\n", sources);

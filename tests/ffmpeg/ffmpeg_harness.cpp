@@ -54,11 +54,9 @@ FfmpegHarness::FfmpegHarness() {
     auto io = ExecutorFactory::makeThreadPool(POOL_THREADS);
     REQUIRE_MESSAGE(io.has_value(), io.error().describe());
     io_ = std::move(*io);
-    Capabilities caps;
-    addFfmpegCapabilities(loadFfmpeg(), caps);
-    REQUIRE(caps.has(FFMPEG_CAPABILITY));
-    registry_ = ComponentRegistry::create(caps);
+    registry_ = ComponentRegistry::load();
     REQUIRE(registry_ != nullptr);
+    REQUIRE(registry_->capabilities().has(FFMPEG_CAPABILITY));
     auto factory = media::SourceFactory::create(*registry_, io_);
     REQUIRE_MESSAGE(factory.has_value(), factory.error().describe());
     factory_ = std::move(*factory);
