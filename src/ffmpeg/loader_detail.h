@@ -34,4 +34,12 @@ struct SearchPlan {
 // AV_VERSION_INT packing as "<major>.<minor>.<micro>", e.g. "62.3.100".
 [[nodiscard]] std::string versionText(unsigned packed);
 
+// The process-wide load, the body of loadFfmpeg(): the first result and the source of its
+// search, whatever later options say. Thread-safe (call_once).
+struct LoadOutcome {
+    const FfmpegStatus& status;
+    SearchSource source;
+};
+[[nodiscard]] LoadOutcome loadOnce(const FfmpegLoadOptions& options);
+
 }  // namespace dvv::components::detail

@@ -78,6 +78,12 @@ bool cmakeHas(std::string_view id) {
         CMAKE_COMPONENTS, [id](const ExpectedComponent& component) { return component.id == id; });
 }
 
+// Both FFmpeg capabilities, in the module's produces order.
+std::vector<std::string> bothCapabilities() {
+    return {std::string(dvv::components::FFMPEG_CAPABILITY),
+            std::string(dvv::components::FFMPEG_LAVFI_CAPABILITY)};
+}
+
 }  // namespace
 
 TEST_CASE("conformance: the registry holds exactly the enabled components") {
@@ -197,6 +203,29 @@ TEST_CASE("conformance: the ffmpeg provider is available with the FFmpeg capabil
         CHECK(lifetimes.liveCount() == live_before + 1);
     }
     CHECK(lifetimes.liveCount() == live_before);
+}
+
+TEST_CASE("conformance: the FFmpeg module is registered with the ffmpeg component") {
+    // The module refuses the option, so FFmpeg is not loaded: the result does not depend on the
+    // machine, and this binary never loads FFmpeg.
+    const auto registry = dvv::ComponentRegistry::load(
+        {.modules = {{std::string(dvv::components::FFMPEG_MODULE), {{"bogus", true}}}}});
+    const dvv::ModuleStatus* status = registry->module(dvv::components::FFMPEG_MODULE);
+    if (!cmakeHas("ffmpeg")) {
+        MESSAGE("the ffmpeg component is off (DVV_COMPONENT_FFMPEG)");
+        CHECK(status == nullptr);
+        return;
+    }
+    CHECK(status != nullptr);
+    if (status != nullptr) {
+        CHECK(std::ranges::equal(status->info.produces,
+                                 std::array{dvv::components::FFMPEG_CAPABILITY,
+                                            dvv::components::FFMPEG_LAVFI_CAPABILITY}));
+        CHECK(status->provides.empty());
+        CHECK(status->withheld == bothCapabilities());
+        CHECK(status->properties.empty());
+        CHECK(status->reason.find("'bogus'") != std::string::npos);
+    }
 }
 
 TEST_CASE("conformance: the lavfi provider needs the ffmpeg.lavfi capability") {

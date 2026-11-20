@@ -18,15 +18,20 @@
 #include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
 #include "dvv/registry/capabilities.h"
+#include "dvv/registry/module.h"
+#include "dvv/registry/parameters.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
 #include "sources/av_worker.h"
+#include "sources/ffmpeg_module.h"
 
 namespace {
 
 using dvv::components::FfmpegLoadOptions;
 using dvv::components::FfmpegStatus;
 using dvv::components::detail::LibraryInfo;
+using dvv::components::detail::moduleLoadOf;
+using dvv::components::detail::moduleOptions;
 using dvv::components::detail::planSearch;
 using dvv::components::detail::refusalReason;
 using dvv::components::detail::SearchSource;
@@ -63,6 +68,18 @@ LibraryInfo& library(std::vector<LibraryInfo>& libraries, const std::string& nam
     }
     FAIL("no library " << name);
     return libraries.front();
+}
+
+// Both FFmpeg capabilities, in the module's produces order.
+std::vector<std::string> bothCapabilities() {
+    return {std::string(dvv::components::FFMPEG_CAPABILITY),
+            std::string(dvv::components::FFMPEG_LAVFI_CAPABILITY)};
+}
+
+// The property the module adds when DVV_FFMPEG_DIR chose the folder.
+dvv::ModuleProperty variableProperty() {
+    return dvv::ModuleProperty{.key = std::string(dvv::MODULE_VARIABLE_PROPERTY),
+                               .value = "DVV_FFMPEG_DIR"};
 }
 
 // An absolute directory on this platform.
@@ -277,6 +294,126 @@ TEST_CASE("addFfmpegCapabilities follows the status") {
         addFfmpegCapabilities(status, caps);
         CHECK(caps.names() == std::vector<std::string>{"ffmpeg", "ffmpeg.lavfi"});
     }
+}
+
+TEST_CASE("moduleLoadOf maps the status") {
+    FfmpegStatus status;
+    status.reason = "r";
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Default);
+        CHECK(module_load.provides.empty());
+        CHECK(module_load.reason == "r");
+        CHECK(module_load.properties.empty());
+        CHECK(module_load.handle == nullptr);
+    }
+    {
+        // The variable property also on a failure.
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Environment);
+        CHECK(module_load.provides.empty());
+        CHECK(module_load.reason == "r");
+        CHECK(module_load.properties == std::vector{variableProperty()});
+        CHECK(module_load.handle == nullptr);
+    }
+
+    status.core = true;
+    status.version = "n8.1.3";
+    status.licence = "LGPL version 2.1 or later";
+    status.directory = dvv::pathFromText("/opt/ffmpeg");
+    status.reason = "lavfi off";
+    std::vector<dvv::ModuleProperty> properties{
+        dvv::ModuleProperty{.key = std::string(dvv::MODULE_VERSION_PROPERTY), .value = "n8.1.3"},
+        dvv::ModuleProperty{.key = std::string(dvv::MODULE_LICENCE_PROPERTY),
+                            .value = "LGPL version 2.1 or later"},
+        dvv::ModuleProperty{.key = std::string(dvv::MODULE_DIRECTORY_PROPERTY),
+                            .value = dvv::pathText(status.directory)},
+    };
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Default);
+        CHECK(module_load.provides ==
+              std::vector<std::string>{std::string(dvv::components::FFMPEG_CAPABILITY)});
+        CHECK(module_load.reason == "lavfi off");
+        CHECK(module_load.properties == properties);
+        CHECK(module_load.handle == nullptr);
+    }
+
+    status.lavfi = true;
+    status.reason.clear();
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Options);
+        CHECK(module_load.provides == bothCapabilities());
+        CHECK(module_load.reason.empty());
+        CHECK(module_load.properties == properties);
+        CHECK(module_load.handle == nullptr);
+    }
+    properties.push_back(variableProperty());
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Environment);
+        CHECK(module_load.provides == bothCapabilities());
+        CHECK(module_load.reason.empty());
+        CHECK(module_load.properties == properties);
+        CHECK(module_load.handle == nullptr);
+    }
+}
+
+TEST_CASE("moduleOptions reads the directory and refuses the rest") {
+    const std::string directory_option(dvv::components::FFMPEG_DIRECTORY_OPTION);
+    {
+        const auto parsed = moduleOptions(dvv::ParameterValues{});
+        CHECK(parsed.has_value());
+        if (parsed) {
+            CHECK_FALSE(parsed->directory.has_value());
+        }
+    }
+    {
+        const auto parsed =
+            moduleOptions(dvv::ParameterValues{{directory_option, std::string("/opt/ffmpeg")}});
+        CHECK(parsed.has_value());
+        CHECK((parsed && parsed->directory.has_value()));
+        if (parsed && parsed->directory) {
+            CHECK(*parsed->directory == dvv::pathFromText("/opt/ffmpeg"));
+        }
+    }
+    {
+        const auto parsed =
+            moduleOptions(dvv::ParameterValues{{directory_option, std::int64_t{1}}});
+        CHECK_FALSE(parsed.has_value());
+        if (!parsed) {
+            CHECK(parsed.error() == "option 'directory' must be text (a folder)");
+        }
+    }
+    {
+        const auto parsed = moduleOptions(dvv::ParameterValues{{"folder", std::string("x")}});
+        CHECK_FALSE(parsed.has_value());
+        if (!parsed) {
+            CHECK(parsed.error() ==
+                  "unknown option 'folder' (the FFmpeg module takes 'directory')");
+        }
+    }
+    {
+        // An empty folder is kept; planSearch refuses it as relative (no default search).
+        const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, std::string()}});
+        CHECK(parsed.has_value());
+        if (parsed) {
+            CHECK(parsed->directory == std::optional{std::filesystem::path{}});
+            const auto plan = planSearch(*parsed, std::nullopt, dvv::pathFromText("/opt/app"));
+            CHECK(plan.error == "the FFmpeg directory must be absolute (got '')");
+            CHECK(plan.directories.empty());
+        }
+    }
+#if !defined(_WIN32)
+    {
+        // The folder is path text: a byte that is not UTF-8 stays.
+        const std::string folder_text = std::string(
+            "/tmp/a\xFF"
+            "b");
+        const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, folder_text}});
+        CHECK(parsed.has_value());
+        CHECK((parsed && parsed->directory.has_value()));
+        if (parsed && parsed->directory) {
+            CHECK(dvv::pathText(*parsed->directory) == folder_text);
+        }
+    }
+#endif
 }
 
 TEST_CASE("averrorText without FFmpeg loaded is empty") {

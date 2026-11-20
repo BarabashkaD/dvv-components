@@ -97,6 +97,7 @@ std::string libraryFile(Library library) {
 struct LoaderState {
     std::once_flag once;
     FfmpegStatus status;
+    detail::SearchSource source = detail::SearchSource::Default;  // where the search came from
     Api api;
     std::atomic<bool> loaded{false};
     std::vector<platform::DynamicLibrary> kept;  // keepLoaded(); never unloaded
@@ -250,6 +251,7 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
     FfmpegStatus& status = state.status;
     status = {};  // a retry after a throwing attempt (call_once runs again) starts clean
     Located located = locate(options);
+    state.source = located.source;  // before the first return: every result carries it
     if (!located.error.empty()) {
         status.reason = std::move(located.error);
         return;
@@ -324,7 +326,7 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
 
 }  // namespace
 
-const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
+detail::LoadOutcome detail::loadOnce(const FfmpegLoadOptions& options) {
     LoaderState& state = loaderState();
     std::call_once(state.once, [&] {
         load(state, options);
@@ -332,7 +334,11 @@ const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
             state.loaded.store(true, std::memory_order_release);
         }
     });
-    return state.status;
+    return {.status = state.status, .source = state.source};
+}
+
+const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
+    return detail::loadOnce(options).status;
 }
 
 void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps) {
