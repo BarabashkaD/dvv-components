@@ -285,9 +285,12 @@ TEST_SUITE("ffmpeg") {
         const media::OriginId origin = harness.origin(source);
         std::vector<dvv::Task<dvv::Result<media::OriginalRead>>> tasks;
         for (std::int64_t index = 9; index >= 0; --index) {
-            tasks.push_back(harness.store().acquireOriginal({origin, index}, media::Api::HostPlanes,
-                                                            harness.store().hostDomain(),
-                                                            harness.cpu(), true));
+            tasks.push_back(
+                harness.store().acquireOriginal({origin, index},
+                                                {.api = media::Api::HostPlanes,
+                                                 .domain = harness.store().hostDomain(),
+                                                 .fidelity = media::OriginalFidelity::Exact},
+                                                harness.cpu()));
         }
         auto reads = dvv::syncWait(dvv::whenAll(std::move(tasks)));
         REQUIRE(reads.size() == 10);
@@ -966,9 +969,12 @@ TEST_SUITE("ffmpeg-single-thread") {
         const media::OriginId origin = harness.origin(source);
         std::vector<dvv::Task<dvv::Result<media::OriginalRead>>> tasks;
         for (std::int64_t index = 9; index >= 0; --index) {
-            tasks.push_back(harness.store().acquireOriginal({origin, index}, media::Api::HostPlanes,
-                                                            harness.store().hostDomain(),
-                                                            harness.cpu(), true));
+            tasks.push_back(
+                harness.store().acquireOriginal({origin, index},
+                                                {.api = media::Api::HostPlanes,
+                                                 .domain = harness.store().hostDomain(),
+                                                 .fidelity = media::OriginalFidelity::Exact},
+                                                harness.cpu()));
         }
         auto reads = dvv::syncWait(dvv::whenAll(std::move(tasks)));
         REQUIRE(reads.size() == 10);

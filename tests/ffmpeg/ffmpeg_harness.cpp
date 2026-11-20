@@ -109,8 +109,11 @@ Result<std::vector<std::byte>> FfmpegHarness::originalBytes(
     const media::OriginId id = origin(source);
     Result<std::vector<std::byte>> bytes;
     {
-        auto read = syncWait(store_->acquireOriginal({id, index}, media::Api::HostPlanes,
-                                                     store_->hostDomain(), *cpu_, true));
+        auto read = syncWait(store_->acquireOriginal({id, index},
+                                                     {.api = media::Api::HostPlanes,
+                                                      .domain = store_->hostDomain(),
+                                                      .fidelity = media::OriginalFidelity::Exact},
+                                                     *cpu_));
         if (read) {
             bytes = originalReadBytes(*read);
         } else {
@@ -123,7 +126,7 @@ Result<std::vector<std::byte>> FfmpegHarness::originalBytes(
 }
 
 std::vector<std::byte> originalReadBytes(const media::OriginalRead& read) {
-    const auto* planes = std::get_if<media::HostPlanesB>(&read.lease().binding());
+    const auto* planes = read.lease().planes();
     REQUIRE(planes != nullptr);
     std::vector<std::byte> copy;
     for (std::size_t p = 0; p < planes->planeCount; ++p) {
