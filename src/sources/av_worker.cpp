@@ -15,6 +15,7 @@
 #include <new>
 #include <span>
 #include <stdexcept>
+#include <stop_token>
 #include <utility>
 
 #include "dvv/base/error.h"
@@ -89,7 +90,17 @@ void setSupplierWrapperForTest(SupplierWrapper wrapper) {
 
 bool StopCheck::operator()() const noexcept {
     return (flag != nullptr && flag->load(std::memory_order_acquire)) ||
-           ffmpeg::stopGeneration() != generation;
+           ffmpeg::stopGeneration() != generation || token.stop_requested();
+}
+
+Error StopCheck::error() const {
+    if (token.stop_requested()) {
+        return Error{.code = Errc::Cancelled,
+                     .message = "source request cancelled",
+                     .where = {},
+                     .cause = nullptr};
+    }
+    return Error{.code = Errc::Internal, .message = "source closed", .where = {}, .cause = nullptr};
 }
 
 Result<void> checkFrame(const AVFrame& frame, std::int64_t index, const media::FrameDesc& desc,
@@ -161,18 +172,20 @@ void AvWorker::ToWorker::await_suspend(std::coroutine_handle<> handle) const {
     }
 }
 
-Result<const AVFrame*> AvWorker::frameOnWorker(std::int64_t index) {
-    if (stop_()) {
-        return makeError(Errc::Internal, "source closed");
+Result<const AVFrame*> AvWorker::frameOnWorker(std::int64_t index, std::stop_token stop) {
+    const StopCheck check{
+        .flag = stop_.flag, .generation = stop_.generation, .token = std::move(stop)};
+    if (check()) {
+        return std::unexpected(check.error());
     }
-    return supplier_->frame(index, stop_);
+    return supplier_->frame(index, check);
 }
 
 Task<Result<media::FrameRef>> AvWorker::produce(std::int64_t index, media::ProduceContext& ctx) {
     co_await toWorker();
     Result<media::FrameRef> result = [&]() -> Result<media::FrameRef> {
         try {
-            auto frame = frameOnWorker(index);
+            auto frame = frameOnWorker(index, ctx.stopToken());
             if (!frame) {
                 return std::unexpected(std::move(frame).error());
             }
@@ -188,11 +201,11 @@ Task<Result<media::FrameRef>> AvWorker::produce(std::int64_t index, media::Produ
     co_return result;
 }
 
-Task<Result<void>> AvWorker::fetch(std::int64_t index, IExecutor& resume_on) {
+Task<Result<void>> AvWorker::fetch(std::int64_t index, IExecutor& resume_on, std::stop_token stop) {
     co_await toWorker();
     Result<void> result = [&]() -> Result<void> {
         try {
-            auto frame = frameOnWorker(index);
+            auto frame = frameOnWorker(index, std::move(stop));
             if (!frame) {
                 return std::unexpected(std::move(frame).error());
             }

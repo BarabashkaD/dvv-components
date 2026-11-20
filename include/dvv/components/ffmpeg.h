@@ -43,11 +43,11 @@ struct FfmpegLoadOptions {
 // Adds "ffmpeg" when status.core and "ffmpeg.lavfi" when status.lavfi.
 void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps);
 
-// Ends the current and queued work of every FFmpeg and lavfi source (design v2 D5, §5.4: exit is
-// bounded): from now on their workers complete each request with Internal "source closed". Sources
-// created afterwards work normally. The applications call it before the Session or CLI shutdown,
-// because the store's queued Produce steps keep their sources alive (M2 R11) and the Session waits
-// for in-flight acquisitions. Thread-safe; increments a process-wide generation.
+// Deprecated (0.3.0): detach the origin (dvv-media FrameStore::detach) or stop the open's token
+// (SourceFactory::open(request, stop)); removed in 1.0.0.
+// Ends the current and queued work of every FFmpeg and lavfi source: from now on their workers
+// complete each request with Internal "source closed". Sources created afterwards work normally.
+// Thread-safe; increments a process-wide generation.
 void stopFfmpegSources() noexcept;
 
 namespace detail {

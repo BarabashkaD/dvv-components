@@ -33,10 +33,6 @@ constexpr std::size_t OPEN_RING = 8;  // open step 2; resized in step 4
 
 using ffmpeg::api;
 
-Error sourceClosed() {
-    return Error{.code = Errc::Internal, .message = "source closed", .where = {}, .cause = nullptr};
-}
-
 // A parse or configure error of the graph: AVERROR(ENOMEM) -> OutOfMemory (ffmpegError of the
 // call); any other -> Format "the lavfi graph is invalid: <text> (AVERROR <n>)" (plan choice: a
 // typo in a user graph is an input error).
@@ -160,9 +156,8 @@ Result<void> GraphSupplier::build() {
     return {};
 }
 
-Result<const AVFrame*> GraphSupplier::first() {
-    const StopCheck never{.flag = nullptr, .generation = ffmpeg::stopGeneration()};
-    if (auto pulled = pull(never); !pulled) {
+Result<const AVFrame*> GraphSupplier::first(const StopCheck& stopped) {
+    if (auto pulled = pull(stopped); !pulled) {
         if (ended_) {
             return makeError(Errc::Format, "the lavfi graph produced no frame");
         }
@@ -194,7 +189,7 @@ void GraphSupplier::resizeRing(std::size_t capacity) {
 
 Result<void> GraphSupplier::pull(const StopCheck& stopped) {
     if (stopped()) {
-        return std::unexpected(sourceClosed());
+        return std::unexpected(stopped.error());
     }
     if (ended_) {
         return std::unexpected(graphEnded(produced_));
@@ -242,7 +237,7 @@ Result<const AVFrame*> GraphSupplier::frame(std::int64_t index, const StopCheck&
 
 // ---- open steps 1-5 ----
 
-Result<OpenedSource> openGraph(const Uri& uri, std::stop_token /*stop*/) {
+Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     // 1. The graph is the URI's body exactly as given (lavfi: is an opaque scheme, so parseUri
     // keeps it whole); a '?' would start a query, which lavfi: URIs do not take (D28).
     const std::string& graph = uri.body;
@@ -253,12 +248,17 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token /*stop*/) {
         return makeError(Errc::Format,
                          "lavfi: URIs take no query (the rest of the URI is the graph)");
     }
-    // One stop generation for the open and the worker (as the ffmpeg provider).
+    // One stop generation for the open and the worker (as the ffmpeg provider); the open's token
+    // bounds the pull of frame 0.
     const std::uint64_t generation = ffmpeg::stopGeneration();
+    const StopCheck opening{.flag = nullptr, .generation = generation, .token = std::move(stop)};
 
     // 2. Build and frame 0.
     DVV_TRY(std::unique_ptr<GraphSupplier> supplier, GraphSupplier::create(graph, OPEN_RING));
-    DVV_TRY(const AVFrame* const first, supplier->first());
+    DVV_TRY(const AVFrame* const first, supplier->first(opening));
+    if (opening()) {
+        return std::unexpected(opening.error());
+    }
 
     // 3. Frame 0 decides the format, the size and the colour; the sink the frame rate.
     const int av_format = first->format;

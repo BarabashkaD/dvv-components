@@ -38,10 +38,6 @@
 namespace dvv::components::detail {
 namespace {
 
-Error sourceClosed() {
-    return Error{.code = Errc::Internal, .message = "source closed", .where = {}, .cause = nullptr};
-}
-
 Error notProduced(std::int64_t index) {
     return Error{.code = Errc::Format,
                  .message = std::format("frame {} not produced by the decoder", index),
@@ -266,7 +262,7 @@ Result<void> ContainerSupplier::scanIndex(AVFormatContext& format, const StopChe
     AVPacket* const packet = packet_.get();
     while (true) {
         if (stopped()) {
-            return std::unexpected(sourceClosed());
+            return std::unexpected(stopped.error());
         }
         const int result = api.av_read_frame(&format, packet);
         if (result == AVERROR_EOF) {
@@ -432,7 +428,7 @@ Result<const AVFrame*> ContainerSupplier::decodeUntil(std::int64_t index,
     AVFrame* const decoded = scratch_.get();
     while (true) {
         if (stopped()) {
-            return std::unexpected(sourceClosed());
+            return std::unexpected(stopped.error());
         }
         const int result = api.avcodec_receive_frame(codec_.get(), decoded);
         if (result == 0) {
@@ -504,7 +500,7 @@ Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
     AVPacket* const packet = packet_.get();
     while (true) {
         if (stopped()) {
-            return std::unexpected(sourceClosed());
+            return std::unexpected(stopped.error());
         }
         const int read = api.av_read_frame(format_.get(), packet);
         if (read == AVERROR_EOF) {
@@ -524,7 +520,7 @@ Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
         }
         if (stopped()) {
             api.av_packet_unref(packet);
-            return std::unexpected(sourceClosed());
+            return std::unexpected(stopped.error());
         }
         const int sent = api.avcodec_send_packet(codec_.get(), packet);
         api.av_packet_unref(packet);
@@ -537,12 +533,16 @@ Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
 
 // ---- open steps 8-12 ----
 
-Result<OpenedSource> openContainer(const Uri& uri, std::stop_token /*stop*/) {
+Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop) {
+    // A stop before the open: no file is opened.
+    if (stop.stop_requested()) {
+        return makeError(Errc::Cancelled, "source request cancelled");
+    }
     const ffmpeg::Api& api = ffmpeg::api();
     // One stop generation for the open and the worker: a source whose open overlapped
-    // stopFfmpegSources() is born stopped.
+    // stopFfmpegSources() is born stopped. The open's token bounds the scan.
     const std::uint64_t generation = ffmpeg::stopGeneration();
-    const StopCheck opening{.flag = nullptr, .generation = generation};
+    const StopCheck opening{.flag = nullptr, .generation = generation, .token = std::move(stop)};
     DVV_TRY(std::unique_ptr<ContainerSupplier> supplier,
             ContainerSupplier::open(uri.path, opening));
 

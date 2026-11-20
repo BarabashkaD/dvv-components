@@ -3,10 +3,13 @@
 
 #include <doctest/doctest.h>
 
+#include <atomic>
 #include <cerrno>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -17,6 +20,7 @@
 #include "dvv/registry/capabilities.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
+#include "sources/av_worker.h"
 
 namespace {
 
@@ -277,4 +281,42 @@ TEST_CASE("addFfmpegCapabilities follows the status") {
 
 TEST_CASE("averrorText without FFmpeg loaded is empty") {
     CHECK_FALSE(dvv::components::ffmpeg::averrorText(-22).has_value());
+}
+
+TEST_CASE("StopCheck: the token gives Cancelled, the flag and the generation give source closed") {
+    using dvv::Errc;
+    using dvv::components::detail::StopCheck;
+    const std::uint64_t gen = dvv::components::ffmpeg::stopGeneration();
+    std::stop_source source;
+    source.request_stop();
+    const std::stop_token stopped = source.get_token();
+    const std::atomic<bool> set{true};
+
+    const StopCheck running{.flag = nullptr, .generation = gen, .token = {}};
+    CHECK_FALSE(running());
+
+    const StopCheck token_only{.flag = nullptr, .generation = gen, .token = stopped};
+    CHECK(token_only());
+    CHECK(token_only.error().code == Errc::Cancelled);
+    CHECK(token_only.error().message == "source request cancelled");
+
+    const StopCheck flag_only{.flag = &set, .generation = gen, .token = {}};
+    CHECK(flag_only());
+    CHECK(flag_only.error().code == Errc::Internal);
+    CHECK(flag_only.error().message == "source closed");
+
+    const StopCheck generation_only{.flag = nullptr, .generation = gen + 1, .token = {}};
+    CHECK(generation_only());
+    CHECK(generation_only.error().code == Errc::Internal);
+    CHECK(generation_only.error().message == "source closed");
+
+    const StopCheck flag_and_token{.flag = &set, .generation = gen, .token = stopped};
+    CHECK(flag_and_token());
+    CHECK(flag_and_token.error().code == Errc::Cancelled);
+    CHECK(flag_and_token.error().message == "source request cancelled");
+
+    const StopCheck generation_and_token{.flag = nullptr, .generation = gen + 1, .token = stopped};
+    CHECK(generation_and_token());
+    CHECK(generation_and_token.error().code == Errc::Cancelled);
+    CHECK(generation_and_token.error().message == "source request cancelled");
 }

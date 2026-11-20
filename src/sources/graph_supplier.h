@@ -41,8 +41,9 @@ public:
     GraphSupplier& operator=(GraphSupplier&&) = delete;
 
     // Pulls frame 0 (open only, before setExpected): its size, format and colour. The frame stays
-    // in the ring as index 0. Errc::Format "the lavfi graph produced no frame" at an immediate end.
-    [[nodiscard]] Result<const AVFrame*> first();
+    // in the ring as index 0. Errc::Format "the lavfi graph produced no frame" at an immediate end;
+    // `stopped.error()` when `stopped` is true before the pull (the open's check).
+    [[nodiscard]] Result<const AVFrame*> first(const StopCheck& stopped);
     [[nodiscard]] AVRational frameRate() const;  // av_buffersink_get_frame_rate
     // The descriptor and AVPixelFormat every later frame must match (checkFrame).
     void setExpected(const media::FrameDesc& desc, int av_format);
@@ -71,7 +72,9 @@ private:
 };
 
 // Open steps 1-5 for one `lavfi` URI, the `lavfi` provider's OpenSteps (it runs on the I/O pool):
-// the source's info and its worker (which owns the supplier, with frame 0 in its ring).
+// the source's info and its worker (which owns the supplier, with frame 0 in its ring). `stop` ends
+// the open with Errc::Cancelled "source request cancelled" at the poll before the pull of frame 0,
+// or when it is stopped once frame 0 is pulled.
 [[nodiscard]] Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop);
 
 // Test seam (stop test): an AvWorker over GraphSupplier for `graph`, with the same open code.

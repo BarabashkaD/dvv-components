@@ -31,8 +31,8 @@ public:
     // avformat_find_stream_info; the stream choice, the codec allowlist (before any scan or decoder
     // lookup; it also wins over a failed stream probe), the frame index (the container's own when
     // it lists every frame, else a demux-only scan), the mode, the reopen, the decoder and frame 0
-    // (into the ring). `stopped` ends the open with Errc::Internal "source closed" (checked before
-    // each scanned packet and while frame 0 decodes).
+    // (into the ring). `stopped` ends the open with `stopped.error()` (checked before each scanned
+    // packet and while frame 0 decodes).
     [[nodiscard]] static Result<std::unique_ptr<ContainerSupplier>> open(
         const std::string& path_utf8, const StopCheck& stopped);
     ~ContainerSupplier() override = default;
@@ -137,7 +137,9 @@ private:
 
 // Open steps 2-12 for one `ffmpeg` URI, the `ffmpeg` provider's OpenSteps (it runs on the I/O
 // pool): the supplier, the catalogue format, the frame rate, the D28 query check, the colour, the
-// resolved URI and the worker (which owns the supplier, with frame 0 in its ring).
+// resolved URI and the worker (which owns the supplier, with frame 0 in its ring). `stop` ends
+// the open with Errc::Cancelled "source request cancelled": before any FFmpeg call when it is
+// already stopped, else at the polls of the scan and of frame 0.
 [[nodiscard]] Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop);
 
 // Test seam (stop test): the worker of a file opened with the same code as open (no query).

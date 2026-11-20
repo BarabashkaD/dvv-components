@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -22,6 +23,7 @@
 #include "dvv/base/executors.h"
 #include "dvv/base/lifetime.h"
 #include "dvv/base/task.h"
+#include "dvv/base/uri.h"
 #include "dvv/base/utf8.h"
 #include "dvv/base/when_all.h"
 #include "dvv/media/frame_store.h"
@@ -356,6 +358,67 @@ TEST_SUITE("ffmpeg") {
             REQUIRE_FALSE(result.has_value());
             CHECK(result.error().code == dvv::Errc::Internal);
             CHECK(result.error().message.find("source closed") != std::string::npos);
+        }
+    }
+
+    TEST_CASE("lavfi: a stopped open token ends the open") {
+        // The token is stopped before the call, so the poll in the first pull ends the open. No
+        // worker starts: a stray one would fail the run's leak check.
+        std::stop_source stop_source;
+        stop_source.request_stop();
+        const auto uri = dvv::parseUri("lavfi:testsrc2=s=64x48:r=25");
+        REQUIRE(uri.has_value());
+        if (uri) {
+            const auto opened = dvv::components::detail::openGraph(*uri, stop_source.get_token());
+            CHECK_FALSE(opened.has_value());
+            if (!opened) {
+                CHECK(opened.error().code == dvv::Errc::Cancelled);
+            }
+        }
+    }
+
+    TEST_CASE("lavfi: a stopped fetch token is Cancelled") {
+        auto made = dvv::components::detail::makeGraphWorkerForTest("testsrc2=s=64x48:r=25");
+        REQUIRE_MESSAGE(made.has_value(), made.error().describe());
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        if (made && pool) {
+            std::stop_source stop_source;
+            stop_source.request_stop();
+            const dvv::Result<void> stopped =
+                dvv::syncWait((*made)->fetch(1, **pool, stop_source.get_token()));
+            CHECK_FALSE(stopped.has_value());
+            if (!stopped) {
+                CHECK(stopped.error().code == dvv::Errc::Cancelled);
+            }
+            // The worker is not closed: the next request runs.
+            const dvv::Result<void> next = dvv::syncWait((*made)->fetch(1, **pool));
+            CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+        }
+    }
+
+    TEST_CASE("lavfi: detach ends a pulling request within 1 s with Cancelled") {
+        // Paced: frame 3000 takes at least 6 s on any machine, so the stop must come from the
+        // supplier's own check of the store's token while it pulls.
+        FfmpegHarness harness;
+        std::optional<PacedWorkers> paced(std::in_place);
+        const auto source = harness.open("lavfi:testsrc2=s=64x48:r=25");
+        static_cast<void>(harness.origin(source));
+        std::optional<dvv::Result<std::vector<std::byte>>> result;
+        std::thread reader([&] { result = harness.originalBytes(source, 3000); });
+        CHECK(paced->waitUntilDecoding());  // the request is pulling on the worker
+        const auto t0 = std::chrono::steady_clock::now();
+        harness.store().detach(harness.origin(source));
+        reader.join();
+        const auto elapsed = std::chrono::steady_clock::now() - t0;
+        paced.reset();
+        CHECK(elapsed < 1000ms);
+        REQUIRE(result.has_value());
+        // A missing result already failed above; the default (a value) then fails below.
+        const auto read = result.value_or(dvv::Result<std::vector<std::byte>>{});
+        CHECK_FALSE(read.has_value());
+        if (!read) {
+            CHECK(read.error().code == dvv::Errc::Cancelled);
         }
     }
 

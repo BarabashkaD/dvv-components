@@ -101,6 +101,11 @@ media::OriginId FfmpegHarness::origin(const std::shared_ptr<media::ISource>& sou
     return *attached;
 }
 
+media::OriginId FfmpegHarness::reattach(const std::shared_ptr<media::ISource>& source) {
+    origins_.erase(source.get());
+    return origin(source);
+}
+
 Result<std::vector<std::byte>> FfmpegHarness::originalBytes(
     const std::shared_ptr<media::ISource>& source, std::int64_t index) {
     const media::OriginId id = origin(source);

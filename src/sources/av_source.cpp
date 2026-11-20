@@ -38,6 +38,10 @@ Task<Result<std::unique_ptr<media::ISource>>> openAvSource(
               // arguments
     IExecutor& io, std::stop_token stop, OpenSteps steps) {
     co_await resumeOn(io);  // all FFmpeg work of open runs on the I/O pool (§5.1)
+    // A stop that came before the open starts pays for no FFmpeg call.
+    if (stop.stop_requested()) {
+        co_return makeError(Errc::Cancelled, "source request cancelled");
+    }
     OpenedSource opened = co_try(steps(uri, std::move(stop)));
     std::unique_ptr<media::ISource> source =
         std::make_unique<AvSource>(media::SourceFactory::issueKey<AvSource>(std::move(ticket)),

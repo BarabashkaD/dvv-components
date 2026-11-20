@@ -13,6 +13,7 @@
 #include <optional>
 #include <random>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -520,6 +521,50 @@ TEST_SUITE("ffmpeg") {
         // The harness detached and destroyed everything.
     }
 
+    TEST_CASE("ffmpeg: detach ends queued store requests within 1 s with Cancelled") {
+        {
+            FfmpegHarness harness;
+            std::optional<PacedWorkers> paced(std::in_place);
+            const auto source = harness.open(fixtureUri(LONG));
+            REQUIRE(source->info().access == media::SourceAccess::Sequential);
+            static_cast<void>(harness.origin(source));
+            std::optional<dvv::Result<std::vector<std::byte>>> result;
+            std::thread reader([&] { result = harness.originalBytes(source, 2999); });
+            CHECK(paced->waitUntilDecoding());  // the request is decoding on the worker
+            const auto t0 = std::chrono::steady_clock::now();
+            harness.store().detach(harness.origin(source));
+            reader.join();
+            const auto elapsed = std::chrono::steady_clock::now() - t0;
+            paced.reset();  // the reads below decode at full speed
+            CHECK(elapsed < 1000ms);
+            REQUIRE(result.has_value());
+            // A missing result already failed above; the default (a value) then fails below.
+            const auto read = result.value_or(dvv::Result<std::vector<std::byte>>{});
+            CHECK_FALSE(read.has_value());
+            if (!read) {
+                CAPTURE(errorText(read.error()));
+                CHECK(read.error().code == dvv::Errc::Cancelled);
+            }
+
+            // The source is not closed: attached again, it reads through the new origin, and
+            // its decoder is in step.
+            [[maybe_unused]] const auto reattached = harness.reattach(source);
+            const auto ours = harness.originalBytes(source, 5);
+            const auto expected = harness.originalBytes(harness.open(fixtureUri(LONG)), 5);
+            CHECK(ours.has_value());
+            CHECK(expected.has_value());
+            if (ours && expected) {
+                CHECK(*ours == *expected);
+            }
+
+            // A source opened afterwards decodes normally.
+            const auto hashes = referenceHashes("seq.framemd5");
+            const auto fresh = harness.open(fixtureUri(SEQ));
+            CHECK(frameHash(harness, fresh, 0) == hashes[0].md5);
+        }
+        // The harness detached and destroyed everything.
+    }
+
     TEST_CASE("ffmpeg: lossless codecs in AVI, MKV, MOV and NUT open and match framemd5") {
         FfmpegHarness harness;
         const std::array<std::pair<std::string_view, std::string_view>, 4> files{{
@@ -664,6 +709,58 @@ TEST_SUITE("ffmpeg") {
         REQUIRE_FALSE(opened.has_value());
         CHECK(opened.error().code == dvv::Errc::Internal);
         CHECK(opened.error().message == "source closed");
+    }
+
+    TEST_CASE("ffmpeg: the open-time scan honours the open token") {
+        std::stop_source stop_source;
+        stop_source.request_stop();
+        const dvv::components::detail::StopCheck stop{
+            .flag = nullptr,
+            .generation = dvv::components::ffmpeg::stopGeneration(),
+            .token = stop_source.get_token()};
+        const auto opened =
+            dvv::components::detail::ContainerSupplier::open(fixturePath(LONG), stop);
+        CHECK_FALSE(opened.has_value());
+        if (!opened) {
+            CHECK(opened.error().code == dvv::Errc::Cancelled);
+        }
+    }
+
+    TEST_CASE("ffmpeg: a token stopped before the open opens no file") {
+        // A missing file: the open's file error would show that avformat_open_input ran.
+        const TemporaryDirectory folder;
+        std::stop_source stop_source;
+        stop_source.request_stop();
+        const auto uri = dvv::parseUri(folder.uri("missing.mkv"));
+        REQUIRE(uri.has_value());
+        if (uri) {
+            const auto opened =
+                dvv::components::detail::openContainer(*uri, stop_source.get_token());
+            CHECK_FALSE(opened.has_value());
+            if (!opened) {
+                CHECK(opened.error().code == dvv::Errc::Cancelled);
+            }
+        }
+    }
+
+    TEST_CASE("ffmpeg: a stopped fetch token is Cancelled") {
+        auto made = dvv::components::detail::makeContainerWorkerForTest(fixture(SEQ));
+        REQUIRE_MESSAGE(made.has_value(), made.error().describe());
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        if (made && pool) {
+            std::stop_source stop_source;
+            stop_source.request_stop();
+            const dvv::Result<void> stopped =
+                dvv::syncWait((*made)->fetch(1, **pool, stop_source.get_token()));
+            CHECK_FALSE(stopped.has_value());
+            if (!stopped) {
+                CHECK(stopped.error().code == dvv::Errc::Cancelled);
+            }
+            // The worker is not closed: the next request runs.
+            const dvv::Result<void> next = dvv::syncWait((*made)->fetch(1, **pool));
+            CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+        }
     }
 
     TEST_CASE("ffmpeg: a frame that changes only its format is Format") {
