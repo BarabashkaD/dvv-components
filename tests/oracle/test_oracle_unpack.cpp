@@ -24,7 +24,7 @@ namespace {
 namespace media = dvv::media;
 namespace oracle = dvv::components::oracle;
 
-// Catalogue formats the oracle cannot check, each with its reason (design R2); empty: every
+// Catalogue formats the oracle cannot check, each with its reason; empty: every
 // catalogue format is covered.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 0> NOT_COVERED{};
 

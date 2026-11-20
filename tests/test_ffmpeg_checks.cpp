@@ -250,7 +250,7 @@ TEST_CASE("versionText") {
     CHECK(versionText(v(62, 3, 100)) == "62.3.100");
 }
 
-TEST_CASE("errcForAverror maps the codes of the design") {
+TEST_CASE("errcForAverror maps the documented codes") {
     using dvv::Errc;
     using dvv::components::ffmpeg::errcForAverror;
     CHECK(errcForAverror(AVERROR(ENOMEM)) == Errc::OutOfMemory);
@@ -368,12 +368,8 @@ TEST_CASE("moduleOptions reads the directory and refuses the rest") {
         const auto parsed =
             moduleOptions(dvv::ParameterValues{{directory_option, std::string("/opt/ffmpeg")}});
         CHECK(parsed.has_value());
-        CHECK((parsed && parsed->directory.has_value()));
         if (parsed) {
-            const std::optional<std::filesystem::path> directory = parsed->directory;
-            if (directory) {
-                CHECK(*directory == dvv::pathFromText("/opt/ffmpeg"));
-            }
+            CHECK(parsed->directory == std::optional{dvv::pathFromText("/opt/ffmpeg")});
         }
     }
     {

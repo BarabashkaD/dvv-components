@@ -32,16 +32,16 @@ const dvv::Capabilities& allCapabilities() {
 }
 
 // The source providers of dvv::media_sources, linked into the test as well.
-constexpr std::array<ExpectedComponent, 3> M2_PROVIDERS{{
+constexpr std::array<ExpectedComponent, 3> PROVIDERS{{
     {"raw"},
     {"synthetic"},
     {"y4m"},
 }};
 
-// CMAKE_COMPONENTS and M2_PROVIDERS, sorted by id.
+// CMAKE_COMPONENTS and PROVIDERS, sorted by id.
 std::vector<ExpectedComponent> expected() {
     std::vector<ExpectedComponent> all(CMAKE_COMPONENTS.begin(), CMAKE_COMPONENTS.end());
-    all.insert(all.end(), M2_PROVIDERS.begin(), M2_PROVIDERS.end());
+    all.insert(all.end(), PROVIDERS.begin(), PROVIDERS.end());
     std::ranges::sort(all, {}, &ExpectedComponent::id);
     return all;
 }
@@ -143,11 +143,11 @@ TEST_CASE(
         if (status.unavailable.has_value()) {
             CHECK(!status.unavailable->reason.empty());
         }
-        const bool m2_provider =
-            std::ranges::any_of(M2_PROVIDERS, [&status](const ExpectedComponent& component) {
+        const bool provider_found =
+            std::ranges::any_of(PROVIDERS, [&status](const ExpectedComponent& component) {
                 return component.id == status.info.id;
             });
-        if (m2_provider) {
+        if (provider_found) {
             CHECK(status.available());
         }
         // Components that probe for a capability are unavailable without it and name it.
@@ -162,7 +162,7 @@ TEST_CASE(
     }
     // The dvv::media_sources providers are listed even when the CMake set is empty (a dependent
     // build with DVV_TEST_DEPENDENCIES).
-    for (const ExpectedComponent& provider : M2_PROVIDERS) {
+    for (const ExpectedComponent& provider : PROVIDERS) {
         const std::string id(provider.id);
         CAPTURE(id);
         CHECK(std::ranges::any_of(statuses, [&provider](const dvv::ComponentStatus& status) {
