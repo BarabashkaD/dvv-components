@@ -65,7 +65,7 @@ const LibraryInfo& infoOf(Library library) noexcept {
 // The file name the loader opens, e.g. "avutil-60.dll".
 std::string libraryFile(Library library) {
     const LibraryInfo& info = infoOf(library);
-    return detail::libraryFileName(info.name, info.compiledVersion >> 16);
+    return platform::libraryFileName(info.name, info.compiledVersion >> 16);
 }
 
 // Process infrastructure (design §6): created once, never destroyed, like the Logger.
@@ -270,7 +270,7 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
     std::string lavfi_reason;
     for (const Library library : LOAD_ORDER) {
         auto handle = platform::DynamicLibrary::open(pathText(directory / libraryFile(library)),
-                                                     platform::LibrarySearch::DllDirectory);
+                                                     platform::LibrarySearch::LibraryDirectory);
         if (!handle) {
             if (library == Library::Avfilter) {
                 lavfi_reason = std::format("{}: libavfilter is not available: {}", where,

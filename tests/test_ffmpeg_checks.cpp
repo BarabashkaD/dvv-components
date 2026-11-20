@@ -22,7 +22,6 @@ namespace {
 using dvv::components::FfmpegLoadOptions;
 using dvv::components::FfmpegStatus;
 using dvv::components::detail::LibraryFacts;
-using dvv::components::detail::libraryFileName;
 using dvv::components::detail::planSearch;
 using dvv::components::detail::refusalReason;
 using dvv::components::detail::SearchSource;
@@ -220,17 +219,7 @@ TEST_CASE("planSearch: the default search looks next to the executable") {
     CHECK(plan.error.empty());
 }
 
-TEST_CASE("libraryFileName and versionText") {
-#if defined(_WIN32)
-    CHECK(libraryFileName("avutil", 60) == "avutil-60.dll");
-    CHECK(libraryFileName("swresample", 6) == "swresample-6.dll");
-#elif defined(__APPLE__)
-    CHECK(libraryFileName("avutil", 60) == "libavutil.60.dylib");
-    CHECK(libraryFileName("swresample", 6) == "libswresample.6.dylib");
-#else
-    CHECK(libraryFileName("avutil", 60) == "libavutil.so.60");
-    CHECK(libraryFileName("swresample", 6) == "libswresample.so.6");
-#endif
+TEST_CASE("versionText") {
     CHECK(versionText(v(62, 3, 100)) == "62.3.100");
 }
 

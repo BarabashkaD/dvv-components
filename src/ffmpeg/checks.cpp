@@ -97,6 +97,7 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
     if (!exe_dir.empty()) {
         plan.directories.push_back((exe_dir / "ffmpeg").lexically_normal());
         plan.directories.push_back((exe_dir / ".." / "lib" / "ffmpeg").lexically_normal());
+        // An app bundle keeps its libraries in Contents/Frameworks.
 #if defined(__APPLE__)
         plan.directories.push_back((exe_dir / ".." / "Frameworks" / "ffmpeg").lexically_normal());
 #endif
@@ -113,15 +114,6 @@ std::string_view sourceName(SearchSource source) noexcept {
     return "default search";
 }
 
-std::string libraryFileName(std::string_view library, unsigned major) {
-#if defined(_WIN32)
-    return std::format("{}-{}.dll", library, major);
-#elif defined(__APPLE__)
-    return std::format("lib{}.{}.dylib", library, major);
-#else
-    return std::format("lib{}.so.{}", library, major);
-#endif
-}
 
 std::string versionText(unsigned packed) {
     return std::format("{}.{}.{}", majorOf(packed), minorOf(packed), packed & 0xffU);

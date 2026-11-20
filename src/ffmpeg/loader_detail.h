@@ -31,9 +31,6 @@ struct SearchPlan {
                                     const std::filesystem::path& exe_dir);
 // "the given directory", "DVV_FFMPEG_DIR", "default search".
 [[nodiscard]] std::string_view sourceName(SearchSource source) noexcept;
-// Windows "<library>-<major>.dll", Linux "lib<library>.so.<major>",
-// macOS "lib<library>.<major>.dylib".
-[[nodiscard]] std::string libraryFileName(std::string_view library, unsigned major);
 // AV_VERSION_INT packing as "<major>.<minor>.<micro>", e.g. "62.3.100".
 [[nodiscard]] std::string versionText(unsigned packed);
 
