@@ -38,12 +38,6 @@ namespace {
 
 constexpr std::size_t POOL_THREADS = 2;
 
-// UTF-8 with '/' separators (URIs and messages).
-std::string genericUtf8(const std::filesystem::path& path) {
-    const std::u8string text = path.generic_u8string();
-    return {text.begin(), text.end()};
-}
-
 std::string readText(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.good()) {
@@ -102,7 +96,8 @@ std::vector<OracleLine> readManifest() {
     REQUIRE_MESSAGE(found.has_value(), "no oracle fixtures (DVV_ORACLE_FIXTURES)");
     const std::filesystem::path directory = found.value_or(std::filesystem::path{});
     const std::string text = readText(directory / "manifest.txt");
-    REQUIRE_MESSAGE(!text.empty(), "empty or missing " << genericUtf8(directory / "manifest.txt"));
+    REQUIRE_MESSAGE(!text.empty(),
+                    "empty or missing " << dvv::pathDisplayText(directory / "manifest.txt"));
     std::vector<OracleLine> lines;
     for (std::string_view row : split(text, '\n')) {
         if (!row.empty() && row.back() == '\r') {
@@ -149,13 +144,13 @@ std::filesystem::path oracleFile(std::string_view name) {
         found.value_or(std::filesystem::path{}) / dvv::pathFromText(name);
     std::error_code error;
     REQUIRE_MESSAGE(std::filesystem::is_regular_file(path, error),
-                    "missing fixture " << genericUtf8(path));
+                    "missing fixture " << dvv::pathDisplayText(path));
     return path;
 }
 
 std::vector<std::byte> readOracleFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
-    REQUIRE_MESSAGE(file.good(), "cannot read " << genericUtf8(path));
+    REQUIRE_MESSAGE(file.good(), "cannot read " << dvv::pathDisplayText(path));
     const std::string text((std::istreambuf_iterator<char>(file)),
                            std::istreambuf_iterator<char>());
     const auto* data = reinterpret_cast<const std::byte*>(text.data());
@@ -163,7 +158,7 @@ std::vector<std::byte> readOracleFile(const std::filesystem::path& path) {
 }
 
 std::string clipUri(const OracleLine& line) {
-    return std::format("file:{}?fmt={}&size={}x{}&impl=raw", genericUtf8(oracleFile(line.file)),
+    return std::format("file:{}?fmt={}&size={}x{}&impl=raw", dvv::pathText(oracleFile(line.file)),
                        line.format, line.width, line.height);
 }
 
