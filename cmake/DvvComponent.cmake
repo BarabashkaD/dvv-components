@@ -10,8 +10,7 @@
 #   global property DVV_COMPONENTS_IDS, which the conformance test compares with the registry. A
 #   component's category is its interface. The library is appended to the global property
 #   DVV_COMPONENTS_LIBRARIES. When OFF: nothing is created or recorded. <id>: [a-z][a-z0-9_]*;
-#   component ids: [a-z][a-z0-9_.-]*, each registered once. No SHADERS in v1.0 (it comes with the
-#   first shader component, v1.x).
+#   component ids: [a-z][a-z0-9_.-]*, each registered once. There is no SHADERS argument yet.
 #   KIND <name>: deprecated (0.3.0); removed in 1.0.0. It only feeds DVV_COMPONENTS_REGISTERS.
 #   DVV_COMPONENTS_REGISTERS: deprecated (0.3.0), use DVV_COMPONENTS_IDS; removed in 1.0.0. Each
 #   id as "<component id>=<Kind>", where <Kind> is the KIND given, else Source (the kind the
