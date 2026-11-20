@@ -504,7 +504,7 @@ Error ContainerSupplier::stopAtPoll(const StopCheck& stopped) {
     return stopped.error();
 }
 
-void ContainerSupplier::dropPendingPacket() noexcept {
+void ContainerSupplier::dropPendingPacket() {
     if (pending_packet_) {
         ffmpeg::api().av_packet_unref(packet_.get());
         pending_packet_ = false;

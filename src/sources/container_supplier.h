@@ -112,7 +112,7 @@ private:
     // A stop at a poll: sets ended_at_poll_, returns stopped.error().
     [[nodiscard]] Error stopAtPoll(const StopCheck& stopped);
     // Seeks and restarts drop a pending packet (av_packet_unref, flag cleared) first.
-    void dropPendingPacket() noexcept;
+    void dropPendingPacket();
     // The index of a decoded frame (Sequential: the next number; indexed: the entry of its pts),
     // nullopt when it is dropped.
     [[nodiscard]] std::optional<std::int64_t> indexOf(const AVFrame& frame);

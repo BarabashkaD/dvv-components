@@ -799,14 +799,14 @@ TEST_SUITE("ffmpeg") {
             std::string_view file;
             std::string_view reference;
             std::int64_t first = 0;
-            int stop_at = 0;
+            int stopAt = 0;
         };
         const std::array<Run, 2> runs{
-            Run{.file = SEQ, .reference = "seq.framemd5", .first = 10, .stop_at = 3},
+            Run{.file = SEQ, .reference = "seq.framemd5", .first = 10, .stopAt = 3},
             Run{.file = "ffv1_yuv420p.mkv",
                 .reference = "ffv1_yuv420p.framemd5",
                 .first = 5,
-                .stop_at = 1}};
+                .stopAt = 1}};
         auto pool = dvv::ExecutorFactory::makeThreadPool(1);
         REQUIRE(pool.has_value());
         for (const Run& run : runs) {
@@ -815,7 +815,7 @@ TEST_SUITE("ffmpeg") {
             std::atomic<int> reads{0};
             std::stop_source stop;
             const auto stop_at_kth_read = [&] {
-                if (++reads == run.stop_at) {
+                if (++reads == run.stopAt) {
                     stop.request_stop();
                 }
             };
@@ -829,7 +829,7 @@ TEST_SUITE("ffmpeg") {
                 if (!stopped) {
                     CHECK(stopped.error().code == dvv::Errc::Cancelled);
                 }
-                CHECK(reads.load() >= run.stop_at);  // the hook fired
+                CHECK(reads.load() >= run.stopAt);  // the hook fired
                 CHECK(fetchHashes(**made, **pool, run.first, 4) ==
                       referenceRange(hashes, run.first, 4));
             }
