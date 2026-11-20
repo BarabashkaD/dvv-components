@@ -16,13 +16,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/dvv_componentsTargets.cmake")
 
 # dvv_add_component() and dvv_link_enabled_components(), and the component libraries this package
 # was built with (its DVV_COMPONENT_<ID> options), which dvv_link_enabled_components() links as
-# whole archives.
+# whole archives. DVV_COMPONENTS_IDS lists the component ids of those libraries.
 set(DVV_COMPONENTS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 include("${CMAKE_CURRENT_LIST_DIR}/DvvComponent.cmake")
 get_property(_dvv_components_listed GLOBAL PROPERTY DVV_COMPONENTS_PACKAGE_LISTED)
 if(NOT _dvv_components_listed)
     set_property(GLOBAL PROPERTY DVV_COMPONENTS_PACKAGE_LISTED TRUE)
     set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_LIBRARIES @DVV_COMPONENTS_INSTALLED_LIBRARIES@)
+    set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_IDS @DVV_COMPONENTS_INSTALLED_IDS@)
 endif()
 
 check_required_components(dvv_components)

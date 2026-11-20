@@ -83,6 +83,8 @@ install(TARGETS dvv_components dvv_ffmpeg ${component_libraries} EXPORT dvv_comp
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 set(config_dir ${CMAKE_INSTALL_LIBDIR}/cmake/dvv_components)
 install(EXPORT dvv_componentsTargets NAMESPACE dvv:: DESTINATION ${config_dir})
+get_property(component_ids GLOBAL PROPERTY DVV_COMPONENTS_IDS)
+list(JOIN component_ids " " DVV_COMPONENTS_INSTALLED_IDS)
 set(DVV_COMPONENTS_INSTALLED_LIBRARIES "")
 foreach(library IN LISTS component_libraries)
     string(REGEX REPLACE "^dvv_" "dvv::" exported "${library}")

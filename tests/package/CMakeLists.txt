@@ -16,6 +16,15 @@ if(NOT DVV_CMAKE_DIR)
 endif()
 include("${DVV_CMAKE_DIR}/DvvCompilerOptions.cmake")
 
+# The package lists the ids of the component libraries it was built with, installed or in-tree.
+get_property(component_ids GLOBAL PROPERTY DVV_COMPONENTS_IDS)
+message(STATUS "DVV_COMPONENTS_IDS: ${component_ids}")
+foreach(required_id IN ITEMS ffmpeg lavfi)
+    if(NOT required_id IN_LIST component_ids)
+        message(FATAL_ERROR "DVV_COMPONENTS_IDS lacks '${required_id}': ${component_ids}")
+    endif()
+endforeach()
+
 add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE dvv::components)
 dvv_set_compiler_options(consumer)
