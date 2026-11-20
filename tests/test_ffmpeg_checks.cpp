@@ -369,8 +369,11 @@ TEST_CASE("moduleOptions reads the directory and refuses the rest") {
             moduleOptions(dvv::ParameterValues{{directory_option, std::string("/opt/ffmpeg")}});
         CHECK(parsed.has_value());
         CHECK((parsed && parsed->directory.has_value()));
-        if (parsed && parsed->directory) {
-            CHECK(*parsed->directory == dvv::pathFromText("/opt/ffmpeg"));
+        if (parsed) {
+            const std::optional<std::filesystem::path> directory = parsed->directory;
+            if (directory) {
+                CHECK(*directory == dvv::pathFromText("/opt/ffmpeg"));
+            }
         }
     }
     {
@@ -409,8 +412,11 @@ TEST_CASE("moduleOptions reads the directory and refuses the rest") {
         const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, folder_text}});
         CHECK(parsed.has_value());
         CHECK((parsed && parsed->directory.has_value()));
-        if (parsed && parsed->directory) {
-            CHECK(dvv::pathText(*parsed->directory) == folder_text);
+        if (parsed) {
+            const std::optional<std::filesystem::path> directory = parsed->directory;
+            if (directory) {
+                CHECK(dvv::pathText(*directory) == folder_text);
+            }
         }
     }
 #endif
