@@ -114,7 +114,6 @@ std::string_view sourceName(SearchSource source) noexcept {
     return "default search";
 }
 
-
 std::string versionText(unsigned packed) {
     return std::format("{}.{}.{}", majorOf(packed), minorOf(packed), packed & 0xffU);
 }
