@@ -33,7 +33,7 @@ set(DVV_COMPONENTS_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake" CACHE INTERNAL
     "dvv-components CMake modules")
 include("${DVV_COMPONENTS_CMAKE_DIR}/DvvComponent.cmake")
 
-# What an application links besides dvv_components_link(<exe>).
+# What an application links besides dvv_link_enabled_components(<exe>).
 add_library(dvv_components INTERFACE)
 add_library(dvv::components ALIAS dvv_components)
 set_target_properties(dvv_components PROPERTIES EXPORT_NAME components)

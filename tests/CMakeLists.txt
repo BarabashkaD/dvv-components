@@ -52,7 +52,7 @@ target_include_directories(dvv_components_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/components)
 target_link_libraries(dvv_components_tests PRIVATE dvv::components doctest::doctest)
 # Every enabled component and the M2 source providers, as whole archives (their DVV_REGISTER lines).
-dvv_components_link(dvv_components_tests)
+dvv_link_enabled_components(dvv_components_tests)
 dvv_link_components(dvv_components_tests dvv::media_sources)
 # doctest otherwise only forward-declares std::ostream, which breaks printing std types.
 target_compile_definitions(dvv_components_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -94,7 +94,7 @@ target_include_directories(dvv_components_ffmpeg_tests PRIVATE ${CMAKE_CURRENT_S
 target_link_libraries(dvv_components_ffmpeg_tests PRIVATE dvv::components dvv_ffmpeg_internal
                                                           doctest::doctest)
 # Every enabled component and the M2 source providers (the provider tests open raw and Y4M files).
-dvv_components_link(dvv_components_ffmpeg_tests)
+dvv_link_enabled_components(dvv_components_ffmpeg_tests)
 dvv_link_components(dvv_components_ffmpeg_tests dvv::media_sources)
 target_compile_definitions(dvv_components_ffmpeg_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 dvv_set_compiler_options(dvv_components_ffmpeg_tests)
@@ -231,7 +231,7 @@ add_test(NAME dvv_components.no_ffmpeg_imports_selftest
                  -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/import-check-selftest
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/run-import-check-selftest.cmake)
 
-# dvv_add_component() and dvv_components_link() at the CMake level: options, recorded ids and
+# dvv_add_component() and dvv_link_enabled_components() at the CMake level: options, recorded ids and
 # errors, in configure-only runs of a stub project.
 add_test(NAME dvv_components.cmake_functions
          COMMAND ${CMAKE_COMMAND}

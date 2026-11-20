@@ -21,4 +21,4 @@ target_link_libraries(consumer PRIVATE dvv::components)
 dvv_set_compiler_options(consumer)
 # Every component library the package was built with (whole archives, so the registrations
 # survive).
-dvv_components_link(consumer)
+dvv_link_enabled_components(consumer)

@@ -14,8 +14,9 @@ find_dependency(dvv_media @dvv_media_MIN_VERSION@)
 
 include("${CMAKE_CURRENT_LIST_DIR}/dvv_componentsTargets.cmake")
 
-# dvv_add_component() and dvv_components_link(), and the component libraries this package was built
-# with (its DVV_COMPONENT_<ID> options), which dvv_components_link() links as whole archives.
+# dvv_add_component() and dvv_link_enabled_components(), and the component libraries this package
+# was built with (its DVV_COMPONENT_<ID> options), which dvv_link_enabled_components() links as
+# whole archives.
 set(DVV_COMPONENTS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 include("${CMAKE_CURRENT_LIST_DIR}/DvvComponent.cmake")
 get_property(_dvv_components_listed GLOBAL PROPERTY DVV_COMPONENTS_PACKAGE_LISTED)

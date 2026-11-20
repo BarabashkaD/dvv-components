@@ -1,5 +1,5 @@
 # Configures tests/cmake/option-project once per case and checks what dvv_add_component() and
-# dvv_components_link() did (M4 design §4.4). Called by dvv_components.cmake_functions with
+# dvv_link_enabled_components() did (M4 design §4.4). Called by dvv_components.cmake_functions with
 # -DPROJECT_DIR, -DWORK_DIR, -DGENERATOR, -DPLATFORM (may be empty), -DCXX_COMPILER,
 # -DCOMPONENT_MODULE and -DREGISTRY_MODULE.
 cmake_minimum_required(VERSION 4.2)
@@ -34,6 +34,7 @@ endfunction()
 set(link_a "\\$<LINK_LIBRARY:WHOLE_ARCHIVE,dvv_component_probe_a>")
 set(link_b "\\$<LINK_LIBRARY:WHOLE_ARCHIVE,dvv_component_probe_b>")
 check(default 0 "registers=<probe\\.a=Source;probe\\.b=Source;probe_b=Source> ids=<probe\\.a;probe\\.b;probe_b> libraries=<dvv_component_probe_a;dvv_component_probe_b> probe_a_target=<yes> app_links=<${link_a};${link_b}>")
+check(old_link 0 "registers=<probe\\.a=Source;probe\\.b=Source;probe_b=Source> ids=<probe\\.a;probe\\.b;probe_b> libraries=<dvv_component_probe_a;dvv_component_probe_b> probe_a_target=<yes> app_links=<${link_a};${link_b}>")
 check(probe_a_off 0 "dvv component probe_a: off \\(DVV_COMPONENT_PROBE_A\\).*registers=<probe_b=Source> ids=<probe_b> libraries=<dvv_component_probe_b> probe_a_target=<no> app_links=<${link_b}>"
       -DDVV_COMPONENT_PROBE_A=OFF)
 check(old_kind 0 "registers=<probe_a=Gadget> ids=<probe_a> libraries")

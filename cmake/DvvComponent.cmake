@@ -16,10 +16,12 @@
 #   DVV_COMPONENTS_REGISTERS: deprecated (0.3.0), use DVV_COMPONENTS_IDS; removed in 1.0.0. Each
 #   id as "<component id>=<Kind>", where <Kind> is the KIND given, else Source (the kind the
 #   registry reports for a component that sets none).
-# dvv_components_link(<executable>)
-#   dvv_link_components(<executable> <every library in DVV_COMPONENTS_LIBRARIES>): each as a whole
-#   archive, so its DVV_REGISTER lines survive linking (with MSVC, dvv_link_components() also sets
-#   /INCREMENTAL:NO).
+# dvv_link_enabled_components(<target>)
+#   dvv_link_components(<target> <every library in DVV_COMPONENTS_LIBRARIES>): each as a whole
+#   archive, so its DVV_REGISTER and DVV_REGISTER_MODULE lines survive linking (with MSVC,
+#   dvv_link_components() also sets /INCREMENTAL:NO).
+# dvv_components_link(<target>): deprecated (0.3.0), use dvv_link_enabled_components(); removed
+#   in 1.0.0.
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)
 #   A CTest test that fails when one of the targets' binaries imports an FFmpeg library (M4 design
 #   D3), through ${DVV_COMPONENTS_CMAKE_DIR}/check-no-ffmpeg-imports.cmake.
@@ -74,9 +76,13 @@ function(dvv_add_component id)
     set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_LIBRARIES ${target})
 endfunction()
 
-function(dvv_components_link target)
+function(dvv_link_enabled_components target)
     get_property(libraries GLOBAL PROPERTY DVV_COMPONENTS_LIBRARIES)
     dvv_link_components(${target} ${libraries})
+endfunction()
+
+function(dvv_components_link target)
+    dvv_link_enabled_components(${target})
 endfunction()
 
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)
