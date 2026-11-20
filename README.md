@@ -72,9 +72,10 @@ FFmpeg is loaded at run time and never linked. The `ffmpeg` component library re
 unloads it, and adds the capabilities `ffmpeg` (`FFMPEG_CAPABILITY`: avutil, avcodec, avformat,
 swscale, swresample) and `ffmpeg.lavfi` (`FFMPEG_LAVFI_CAPABILITY`: also avfilter) as far as they
 are available. `registry.module(FFMPEG_MODULE)` is the status: what is withheld and why, and the
-properties `version`, `licence`, `directory` and `variable`. The reason and the `directory` property may
-hold a folder of the user's machine: the reason shows it as `dvv::pathDisplayText`, the property is
-`dvv::pathText` (`dvv::pathFromText` gives the folder back).
+properties `version`, `licence` and `directory` (present only when the core capability is provided)
+and `variable` (present only when `DVV_FFMPEG_DIR` chose the folder). The reason and the `directory`
+property may hold a folder of the user's machine: the reason shows it as `dvv::pathDisplayText`,
+the property is `dvv::pathText` (`dvv::pathFromText` gives the folder back).
 
 - It opens the six libraries of an LGPL shared build (`avutil`, `swresample`, `swscale`,
   `avcodec`, `avformat`, `avfilter`), each with its dependencies taken only from the library's own

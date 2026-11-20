@@ -1,6 +1,7 @@
 # Fails when a binary imports an FFmpeg library (FFmpeg is loaded at run time and never
 # linked). Installed with dvv_components; dvv_check_no_ffmpeg_imports() adds a CTest test for it.
-#   cmake -DBINARIES=<file>[,<file>...] (-DDUMPBIN=<dumpbin> | -DREADELF=<readelf> | -DOTOOL=<otool>)
+#   cmake -DBINARIES=<file>[,<file>...]
+#         (-DDUMPBIN=<dumpbin> | -DREADELF=<readelf> | -DOTOOL=<otool>)
 #         -P check-no-ffmpeg-imports.cmake
 #   cmake -DLISTING=<text file> -P check-no-ffmpeg-imports.cmake   (checks a saved listing)
 cmake_minimum_required(VERSION 4.2)

@@ -11,8 +11,9 @@ GitHub Releases).
 ### Added
 - The FFmpeg module `ffmpeg`: `ComponentRegistry::load()` loads FFmpeg and adds its capabilities.
   `registry.module(FFMPEG_MODULE)` reports what it provides and withholds, the reason, and the
-  properties `version`, `licence`, `directory` and, when `DVV_FFMPEG_DIR` chose the folder,
-  `variable`. Option `directory` (`FFMPEG_DIRECTORY_OPTION`): an absolute folder, final.
+  properties `version`, `licence` and `directory` (when the core capability is provided) and,
+  when `DVV_FFMPEG_DIR` chose the folder, `variable`. Option `directory`
+  (`FFMPEG_DIRECTORY_OPTION`): an absolute folder, final.
 - `FFMPEG_MODULE`, `FFMPEG_CAPABILITY`, `FFMPEG_LAVFI_CAPABILITY` and `FFMPEG_DIRECTORY_OPTION`
   in `dvv/components/ffmpeg.h`.
 - `dvv_link_enabled_components(<target>)`.
@@ -45,7 +46,8 @@ GitHub Releases).
 
 ### Deprecated (removed in 1.0.0)
 - `loadFfmpeg`, `addFfmpegCapabilities`, `FfmpegStatus` and `FfmpegLoadOptions`: use
-  `ComponentRegistry::load()` and `registry.module(FFMPEG_MODULE)`.
+  `ComponentRegistry::load()` and `registry.module(FFMPEG_MODULE)`. `FfmpegStatus::libraryVersions`
+  has no replacement in the module.
 - `stopFfmpegSources()`: detach the origin, or stop the open's token
   (`SourceFactory::open(request, stop)`).
 - `dvv_components_link()`: use `dvv_link_enabled_components()`.

@@ -5,9 +5,9 @@
 # dvv_add_component(<id> SOURCES <file>... [LINK <target>...] [REGISTERS <component id>...])
 #   Option DVV_COMPONENT_<ID> (default ON; <ID> is <id> in upper case). When ON: a STATIC library
 #   dvv_component_<id> (alias dvv::component_<id>, export name component_<id>) from SOURCES, linking
-#   dvv::media PUBLIC and the LINK targets PRIVATE, with the dvv compiler options. REGISTERS (default
-#   <id>) are the component ids its DVV_REGISTER lines register; each is recorded in the global
-#   property DVV_COMPONENTS_IDS, which the conformance test compares with the registry. A
+#   dvv::media PUBLIC and the LINK targets PRIVATE, with the dvv compiler options. REGISTERS
+#   (default <id>) are the component ids its DVV_REGISTER lines register; each is recorded in the
+#   global property DVV_COMPONENTS_IDS, which the conformance test compares with the registry. A
 #   component's category is its interface. The library is appended to the global property
 #   DVV_COMPONENTS_LIBRARIES. When OFF: nothing is created or recorded. <id>: [a-z][a-z0-9_]*;
 #   component ids: [a-z][a-z0-9_.-]*, each registered once. No SHADERS in v1.0 (it comes with the

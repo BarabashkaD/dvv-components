@@ -8,8 +8,8 @@
 # character outside [A-Za-z0-9._-] removed) and records that absolute folder in <OUT>/current.txt;
 # a done.stamp there written by the same script skips the work. Without the program: prints "ffmpeg
 # program missing; oracle fixtures not made" and exits 0 without a stamp. Outside Windows every
-# command runs with LD_LIBRARY_PATH=<LIBDIR>. A failing command is fatal, except the clip of a format
-# the program cannot write: that format is logged and left out of the manifest.
+# command runs with LD_LIBRARY_PATH=<LIBDIR>. A failing command is fatal, except the clip of a
+# format the program cannot write: that format is logged and left out of the manifest.
 #
 # Output:
 #   clip_<F>.raw              10 frames of testsrc2 in format F (v210: the v210 encoder's output);
@@ -117,10 +117,11 @@ set(table
     "gbrp gbrp10le gbrp16le|-|rgb")
 
 # Formats deeper than 8 bits. testsrc2 draws 8-bit colours shifted to the depth,
-# so every bit below the top 8 would be zero and the oracle could not see a broken low bit. For these
-# formats geq first adds a moving pattern of 0..255 to a 16-bit planar copy (alpha: 65535 minus the
-# pattern), which leaves non-zero bits below the top 8 in every component after the lossless clip
-# writer's conversion to the format. The oracle test checks that each such reference plane has them.
+# so every bit below the top 8 would be zero and the oracle could not see a broken low bit. For
+# these formats geq first adds a moving pattern of 0..255 to a 16-bit planar copy (alpha: 65535
+# minus the pattern), which leaves non-zero bits below the top 8 in every component after the
+# lossless clip writer's conversion to the format. The oracle test checks that each such reference
+# plane has them.
 set(deep_formats
     gray10le gray12le gray16le gray16be yuv420p10le yuv422p10le yuv444p10le yuv420p12le yuv422p12le
     yuv444p12le yuv420p16le yuv444p16le yuv420p10be p010le p016le y210le v210 rgb48le rgb48be
@@ -129,8 +130,8 @@ set(pattern_1 "mod(X+3*Y+7*N,256)")
 set(pattern_2 "mod(5*X+Y+11*N,256)")
 set(pattern_3 "mod(X+7*Y+13*N,256)")
 
-# The lavfi source of a clip of <width> pixels: plain testsrc2, or for a deep format testsrc2 with the
-# geq pattern in the 16-bit planar format of its model (letters: y, yuv, rgb or rgba).
+# The lavfi source of a clip of <width> pixels: plain testsrc2, or for a deep format testsrc2
+# with the geq pattern in the 16-bit planar format of its model (letters: y, yuv, rgb or rgba).
 function(clip_source format letters width out_var)
     set(source "testsrc2=s=${width}x${height}:r=25")
     if(format IN_LIST deep_formats)

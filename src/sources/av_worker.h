@@ -80,10 +80,11 @@ public:
     AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc desc,
              std::uint64_t generation);
     // Sets `stopping`, then destroys the pool: every queued request runs, sees the flag and
-    // completes with Internal "source closed"; then the supplier (and its AV objects) dies. Must
-    // not run on the worker thread (produce and fetch never return there). No produce or fetch may
-    // start once destruction begins: post_mutex_ only makes queued() a safe signal that every
-    // counted request is already posted.
+    // completes with Internal "source closed" (Errc::Cancelled "source request cancelled" when its
+    // token is stopped); then the supplier (and its AV objects) dies. Must not run on the worker
+    // thread (produce and fetch never return there). No produce or fetch may start once destruction
+    // begins: post_mutex_ only makes queued() a safe signal that every counted request is already
+    // posted.
     ~AvWorker();
     AvWorker(const AvWorker&) = delete;
     AvWorker& operator=(const AvWorker&) = delete;

@@ -1,5 +1,5 @@
 ---
-# Naming follows spec §14; checks stay modest so findings are worth fixing.
+# Naming follows the project's naming rules; checks stay modest so findings are worth fixing.
 Checks: >
   -*,
   bugprone-*,

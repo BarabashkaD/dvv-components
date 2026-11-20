@@ -26,15 +26,16 @@ inline constexpr std::string_view FFMPEG_LAVFI_CAPABILITY = "ffmpeg.lavfi";  // 
 // The FFmpeg module: ComponentRegistry::load() loads FFmpeg (once per process; it is never
 // unloaded) and adds FFMPEG_CAPABILITY and FFMPEG_LAVFI_CAPABILITY as far as they are available.
 // registry.module(FFMPEG_MODULE) is its status: the reason when a capability is withheld, and the
-// properties MODULE_VERSION_PROPERTY, MODULE_LICENCE_PROPERTY, MODULE_DIRECTORY_PROPERTY and,
-// when DVV_FFMPEG_DIR chose the folder, MODULE_VARIABLE_PROPERTY. The reason and the directory
-// property may hold a path: the reason shows folders as dvv::pathDisplayText, the directory
-// property is dvv::pathText (dvv::pathFromText gives the folder back).
-// The module id and the capability name are both "ffmpeg" by naming only; they are separate
-// namespaces (module() versus capabilities()).
+// properties MODULE_VERSION_PROPERTY, MODULE_LICENCE_PROPERTY and MODULE_DIRECTORY_PROPERTY
+// (present only when the core capability is provided) and MODULE_VARIABLE_PROPERTY (present only
+// when DVV_FFMPEG_DIR chose the folder). The reason and the directory property may hold a path: the
+// reason shows folders as dvv::pathDisplayText, the directory property is dvv::pathText
+// (dvv::pathFromText gives the folder back). The module id and the capability name are both
+// "ffmpeg" by naming only; they are separate namespaces (module() versus capabilities()).
 inline constexpr std::string_view FFMPEG_MODULE = "ffmpeg";
 // The module's one option: an explicit FFmpeg folder as text (a std::string), absolute and final
-// like DVV_FFMPEG_DIR. Without it the module searches as loadFfmpeg() does.
+// like DVV_FFMPEG_DIR. Without it ComponentRegistry::load() searches DVV_FFMPEG_DIR, then the
+// folders next to the executable.
 // FFmpeg loads once per process: a later load() with another folder gets the first result.
 inline constexpr std::string_view FFMPEG_DIRECTORY_OPTION = "directory";
 
@@ -53,8 +54,7 @@ struct FfmpegStatus {
 
 // Deprecated (0.3.0): use ComponentRegistry::load() and registry.module(FFMPEG_MODULE); removed in
 // 1.0.0.
-// An explicit FFmpeg directory: absolute, final like DVV_FFMPEG_DIR (no fallthrough). The v1.0
-// executables pass {} (a command-line option is v1.x).
+// An explicit FFmpeg directory: absolute, final like DVV_FFMPEG_DIR (no fallthrough).
 struct FfmpegLoadOptions {
     std::optional<std::filesystem::path> directory;
 };
@@ -63,10 +63,10 @@ struct FfmpegLoadOptions {
 // 1.0.0.
 // Loads once per process (later calls return the first result, whatever their options;
 // thread-safe) and never unloads. Search: options.directory, else DVV_FFMPEG_DIR (an empty value
-// counts as unset), else <exe dir>/ffmpeg, then <exe dir>/../lib/ffmpeg. An explicit directory is
-// final: a failure there leaves FFmpeg off with the reason. Every library passes the checks of
-// refusalReason and every function of the table resolves. Installs the av_log callback.
-// Adds nothing to a registry.
+// counts as unset), else <exe dir>/ffmpeg, then <exe dir>/../lib/ffmpeg (macOS also <exe
+// dir>/../Frameworks/ffmpeg). An explicit directory is final: a failure there leaves FFmpeg off
+// with the reason. Every library passes the checks of refusalReason and every function of the table
+// resolves. Installs the av_log callback. Adds nothing to a registry.
 [[nodiscard]] const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options = {});
 // Deprecated (0.3.0): use ComponentRegistry::load() and registry.module(FFMPEG_MODULE); removed in
 // 1.0.0.
@@ -76,8 +76,9 @@ void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps);
 // Deprecated (0.3.0): detach the origin (dvv-media FrameStore::detach) or stop the open's token
 // (SourceFactory::open(request, stop)); removed in 1.0.0.
 // Ends the current and queued work of every FFmpeg and lavfi source: from now on their workers
-// complete each request with Internal "source closed". Sources created afterwards work normally.
-// Thread-safe; increments a process-wide generation.
+// complete each request with Internal "source closed", except a request whose token is stopped:
+// it ends with Errc::Cancelled "source request cancelled". Sources created afterwards work
+// normally. Thread-safe; increments a process-wide generation.
 void stopFfmpegSources() noexcept;
 
 namespace detail {

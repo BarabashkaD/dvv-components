@@ -5,8 +5,9 @@
 #
 # Writes into <OUT>/<version>/ (<version>: the third token of `ffmpeg -version` line 1, every
 # character outside [A-Za-z0-9._-] removed) and records that absolute folder in <OUT>/current.txt;
-# a done.stamp there written by the same script skips the work. Without the program: prints "ffmpeg program missing"
-# and exits 0 without a stamp. Outside Windows every command runs with LD_LIBRARY_PATH=<LIBDIR>.
+# a done.stamp there written by the same script skips the work. Without the program: prints
+# "ffmpeg program missing" and exits 0 without a stamp. Outside Windows every command runs with
+# LD_LIBRARY_PATH=<LIBDIR>.
 cmake_minimum_required(VERSION 4.2)
 
 if(NOT OUT)
