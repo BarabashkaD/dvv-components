@@ -369,7 +369,7 @@ TEST_SUITE("ffmpeg") {
               std::string::npos);
     }
 
-    TEST_CASE("ffmpeg: colour from the container and the D28 override") {
+    TEST_CASE("ffmpeg: colour from the container and the URI's colour override") {
         FfmpegHarness harness;
         const std::string uri = fixtureUri("ffv1_yuv420p.mkv");
         const std::string base = resolvedBase("ffv1_yuv420p.mkv");

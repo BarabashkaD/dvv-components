@@ -18,7 +18,7 @@ function(check_listing what listing)
            listing MATCHES "\\[lib${name}\\.so(\\.[0-9]+)*\\]" OR
            listing MATCHES "/lib${name}(\\.[0-9]+)*\\.dylib")
             message(FATAL_ERROR "${what} imports the FFmpeg library ${name}; FFmpeg must be loaded "
-                                "at run time, never linked (M4 design D3)")
+                                "at run time, never linked")
         endif()
     endforeach()
 endfunction()

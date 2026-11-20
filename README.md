@@ -134,6 +134,7 @@ Decoded frames are copied into catalogue formats; a decoder output format outsid
 | --- | --- | --- |
 | `dvv_components.unit` | `sanity` | the rules without FFmpeg |
 | `dvv_components.ffmpeg`, `.ffmpeg_absent`, `.ffmpeg_relative` | `ffmpeg` | the loader and both providers against FFmpeg's own output; a missing FFmpeg; a relative `DVV_FFMPEG_DIR` |
+| `dvv_components.ffmpeg_single_thread` | `ffmpeg` | a decode whose decoders start no FFmpeg threads, so the thread sanitizer checks our own threading without suppressions |
 | `dvv_components.oracle` | `ffmpeg;oracle` | unpacked frames and the display colour against FFmpeg's output |
 | `dvv_components.ffmpeg_fixtures`, `.lavfi_fixtures`, `.oracle_fixtures` | `ffmpeg` (`ffmpeg;oracle` for the oracle fixtures) | make the fixtures in the build tree (never committed) |
 | `dvv_components.no_ffmpeg_imports` (+ `_selftest`), `.cmake_functions`, `.compile_fail.*` | | no binary imports FFmpeg; the CMake functions; compile-time rules |
