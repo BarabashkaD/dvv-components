@@ -2,13 +2,14 @@
 #include <cstdio>
 
 #include "dvv/components/ffmpeg.h"
+#include "dvv/media/source_factory.h"
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
 #include "dvv/registry/component_registry.h"
 
 int main() {
     auto registry = dvv::ComponentRegistry::create(dvv::Capabilities{});
-    const std::size_t sources = registry->list(dvv::Kind::Source).size();
+    const std::size_t sources = registry->list<dvv::media::ISourceProvider>().size();
     registry.reset();
     // The installed dvv::ffmpeg links (no FFmpeg is loaded).
     const dvv::components::FfmpegStatus status;

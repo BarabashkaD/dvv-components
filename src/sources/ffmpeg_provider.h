@@ -19,7 +19,6 @@
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
 #include "dvv/registry/component_registry.h"
-#include "dvv/registry/parameters.h"
 #include "sources/av_worker.h"
 
 namespace dvv::components {
@@ -27,14 +26,11 @@ namespace dvv::components {
 class FfmpegSourceProvider final : public media::ISourceProvider,
                                    public Managed<FfmpegSourceProvider> {
 public:
-    FfmpegSourceProvider(CreationKey<ComponentRegistry> key,
-                         const ParameterValues& values) noexcept;
+    explicit FfmpegSourceProvider(CreationKey<ComponentRegistry> key) noexcept;
 
     static ComponentInfo info() noexcept {
-        return {
-            .id = "ffmpeg", .name = "FFmpeg container files", .kind = Kind::Source, .version = 1};
+        return {.id = "ffmpeg", .name = "FFmpeg container files", .version = 1};
     }
-    static const ParameterSchema& schema();  // empty
     static std::expected<void, Unavailable> probe(const Capabilities& caps) {
         return require(caps, {"ffmpeg"});
     }

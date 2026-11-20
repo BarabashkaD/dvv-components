@@ -22,7 +22,6 @@
 #include "dvv/media/source.h"
 #include "dvv/media/source_factory.h"
 #include "dvv/registry/component_registry.h"
-#include "dvv/registry/parameters.h"
 #include "ffmpeg/api.h"
 #include "sources/av_worker.h"
 #include "sources/container_supplier.h"
@@ -35,14 +34,8 @@ constexpr std::array<std::string_view, 1> SCHEMES{"file"};
 
 }  // namespace
 
-FfmpegSourceProvider::FfmpegSourceProvider(CreationKey<ComponentRegistry> key,
-                                           const ParameterValues& /*values*/) noexcept
+FfmpegSourceProvider::FfmpegSourceProvider(CreationKey<ComponentRegistry> key) noexcept
     : Managed(std::move(key)) {}
-
-const ParameterSchema& FfmpegSourceProvider::schema() {
-    static const ParameterSchema SCHEMA;
-    return SCHEMA;
-}
 
 std::span<const std::string_view> FfmpegSourceProvider::schemes() const noexcept {
     return SCHEMES;

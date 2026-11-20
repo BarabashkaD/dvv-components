@@ -2,18 +2,20 @@
 # package configuration; in-tree the dvv_components project includes it. Needs
 # dvv_set_compiler_options() (dvv_base, DvvCompilerOptions.cmake) and dvv_link_components()
 # (dvv_registry, DvvComponents.cmake).
-#
-# dvv_add_component(<id> KIND <Kind> SOURCES <file>... [LINK <target>...]
-#                   [REGISTERS <component id>...])
+# dvv_add_component(<id> SOURCES <file>... [LINK <target>...] [REGISTERS <component id>...])
 #   Option DVV_COMPONENT_<ID> (default ON; <ID> is <id> in upper case). When ON: a STATIC library
 #   dvv_component_<id> (alias dvv::component_<id>, export name component_<id>) from SOURCES, linking
 #   dvv::media PUBLIC and the LINK targets PRIVATE, with the dvv compiler options. REGISTERS (default
-#   <id>) are the component ids its DVV_REGISTER lines register; each is recorded with KIND in the
-#   global property DVV_COMPONENTS_REGISTERS as "<component id>=<Kind>", which the conformance test
-#   compares with the registry (spec §12 "registry == enabled CMake set"), and the library is
-#   appended to the global property DVV_COMPONENTS_LIBRARIES. When OFF: nothing is created or
-#   recorded. <id>: [a-z][a-z0-9_]*; component ids: [a-z][a-z0-9_.-]*, each registered once; KIND: a
-#   dvv::Kind name. No SHADERS in v1.0 (it comes with the first shader component, v1.x).
+#   <id>) are the component ids its DVV_REGISTER lines register; each is recorded in the global
+#   property DVV_COMPONENTS_IDS, which the conformance test compares with the registry. A
+#   component's category is its interface. The library is appended to the global property
+#   DVV_COMPONENTS_LIBRARIES. When OFF: nothing is created or recorded. <id>: [a-z][a-z0-9_]*;
+#   component ids: [a-z][a-z0-9_.-]*, each registered once. No SHADERS in v1.0 (it comes with the
+#   first shader component, v1.x).
+#   KIND <name>: deprecated (0.3.0); removed in 1.0.0. It only feeds DVV_COMPONENTS_REGISTERS.
+#   DVV_COMPONENTS_REGISTERS: deprecated (0.3.0), use DVV_COMPONENTS_IDS; removed in 1.0.0. Each
+#   id as "<component id>=<Kind>", where <Kind> is the KIND given, else Source (the kind the
+#   registry reports for a component that sets none).
 # dvv_components_link(<executable>)
 #   dvv_link_components(<executable> <every library in DVV_COMPONENTS_LIBRARIES>): each as a whole
 #   archive, so its DVV_REGISTER lines survive linking (with MSVC, dvv_link_components() also sets
@@ -24,19 +26,12 @@
 include_guard(GLOBAL)
 
 function(dvv_add_component id)
-    # Inside the function: include_guard(GLOBAL) skips a second include of this file (the installed
-    # package found again from another directory), so a file-scope list would be empty there.
-    set(DVV_COMPONENT_KINDS Source FormatDetector Exporter Tool Metric Analyser Processor)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "KIND" "SOURCES;LINK;REGISTERS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "dvv_add_component(${id}): unexpected '${arg_UNPARSED_ARGUMENTS}'")
     endif()
     if(NOT id MATCHES "^[a-z][a-z0-9_]*$")
         message(FATAL_ERROR "dvv_add_component(${id}): the id must match [a-z][a-z0-9_]*")
-    endif()
-    if(NOT arg_KIND IN_LIST DVV_COMPONENT_KINDS)
-        list(JOIN DVV_COMPONENT_KINDS ", " kinds)
-        message(FATAL_ERROR "dvv_add_component(${id}): KIND must be one of ${kinds}")
     endif()
     if(NOT arg_SOURCES)
         message(FATAL_ERROR "dvv_add_component(${id}): SOURCES is required")
@@ -50,19 +45,16 @@ function(dvv_add_component id)
         message(STATUS "dvv component ${id}: off (DVV_COMPONENT_${upper})")
         return()
     endif()
-    get_property(registered GLOBAL PROPERTY DVV_COMPONENTS_REGISTERS)
+    get_property(registered_ids GLOBAL PROPERTY DVV_COMPONENTS_IDS)
     foreach(component IN LISTS arg_REGISTERS)
         if(NOT component MATCHES "^[a-z][a-z0-9_.-]*$")
             message(FATAL_ERROR "dvv_add_component(${id}): component id '${component}' must match "
                                 "[a-z][a-z0-9_.-]*")
         endif()
-        foreach(entry IN LISTS registered)
-            string(REGEX REPLACE "=[A-Za-z]+$" "" registered_id "${entry}")
-            if(registered_id STREQUAL component)
-                message(FATAL_ERROR
-                        "dvv_add_component(${id}): component '${component}' is registered twice")
-            endif()
-        endforeach()
+        if(component IN_LIST registered_ids)
+            message(FATAL_ERROR
+                    "dvv_add_component(${id}): component '${component}' is registered twice")
+        endif()
     endforeach()
 
     set(target dvv_component_${id})
@@ -71,8 +63,13 @@ function(dvv_add_component id)
     set_target_properties(${target} PROPERTIES EXPORT_NAME component_${id})
     target_link_libraries(${target} PUBLIC dvv::media PRIVATE ${arg_LINK})
     dvv_set_compiler_options(${target})
+    set(kind Source)
+    if(arg_KIND)
+        set(kind "${arg_KIND}")
+    endif()
     foreach(component IN LISTS arg_REGISTERS)
-        set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_REGISTERS "${component}=${arg_KIND}")
+        set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_IDS "${component}")
+        set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_REGISTERS "${component}=${kind}")
     endforeach()
     set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_LIBRARIES ${target})
 endfunction()

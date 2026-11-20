@@ -21,14 +21,11 @@ int main() {
     return 0;
 #elif DVV_COMPILE_FAIL_CASE == 1
     TestEchoProvider provider(dvv::CreationKey<dvv::ComponentRegistry>(
-                                  dvv::LifetimeRegistry::instance().issue<TestEchoProvider>()),
-                              dvv::ParameterValues{});
+        dvv::LifetimeRegistry::instance().issue<TestEchoProvider>()));
     return 0;
 #elif DVV_COMPILE_FAIL_CASE == 2
-    dvv::components::FfmpegSourceProvider provider(
-        dvv::CreationKey<dvv::ComponentRegistry>(
-            dvv::LifetimeRegistry::instance().issue<dvv::components::FfmpegSourceProvider>()),
-        dvv::ParameterValues{});
+    dvv::components::FfmpegSourceProvider provider(dvv::CreationKey<dvv::ComponentRegistry>(
+        dvv::LifetimeRegistry::instance().issue<dvv::components::FfmpegSourceProvider>()));
     return 0;
 #endif
 }

@@ -16,7 +16,6 @@
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
 #include "dvv/registry/component_registry.h"
-#include "dvv/registry/parameters.h"
 #include "expected_components.h"
 
 namespace {
@@ -32,9 +31,9 @@ const dvv::Capabilities& allCapabilities() {
 
 // The source providers of dvv::media_sources (M2), linked into the test as well.
 constexpr std::array<ExpectedComponent, 3> M2_PROVIDERS{{
-    {"raw", dvv::Kind::Source},
-    {"synthetic", dvv::Kind::Source},
-    {"y4m", dvv::Kind::Source},
+    {"raw"},
+    {"synthetic"},
+    {"y4m"},
 }};
 
 // CMAKE_COMPONENTS and M2_PROVIDERS, sorted by id.
@@ -48,7 +47,7 @@ std::vector<ExpectedComponent> expected() {
 std::string describe(const std::vector<ExpectedComponent>& components) {
     std::string text;
     for (const ExpectedComponent& component : components) {
-        text += std::string(component.id) + "=" + std::string(dvv::kindName(component.kind)) + " ";
+        text += std::string(component.id) + " ";
     }
     return text;
 }
@@ -57,20 +56,19 @@ std::vector<ExpectedComponent> listed(const std::vector<dvv::ComponentStatus>& s
     std::vector<ExpectedComponent> components;
     components.reserve(statuses.size());
     for (const dvv::ComponentStatus& status : statuses) {
-        components.push_back({status.info.id, status.info.kind});
+        components.push_back({status.info.id});
     }
     return components;
 }
 
-bool sameIdsAndKinds(const std::vector<ExpectedComponent>& a,
-                     const std::vector<ExpectedComponent>& b) {
-    return std::ranges::equal(a, b, [](const ExpectedComponent& x, const ExpectedComponent& y) {
-        return x.id == y.id && x.kind == y.kind;
-    });
-}
-
 bool sameIds(const std::vector<ExpectedComponent>& a, const std::vector<ExpectedComponent>& b) {
     return std::ranges::equal(a, b, {}, &ExpectedComponent::id, &ExpectedComponent::id);
+}
+
+// Whether `id` is among the components that implement ISourceProvider.
+bool isSource(const std::vector<dvv::ComponentStatus>& sources, std::string_view id) {
+    return std::ranges::any_of(
+        sources, [id](const dvv::ComponentStatus& status) { return status.info.id == id; });
 }
 
 bool cmakeHas(std::string_view id) {
@@ -86,12 +84,13 @@ TEST_CASE("conformance: the registry holds exactly the enabled components") {
     const std::vector<ExpectedComponent> want = expected();
     INFO("registry: " << describe(got));
     INFO("expected: " << describe(want));
-    CHECK(sameIdsAndKinds(got, want));
+    CHECK(sameIds(got, want));
 }
 
 TEST_CASE("conformance: every component is available, valid, created and destroyed cleanly") {
     auto& lifetimes = dvv::LifetimeRegistry::instance();
     const auto registry = dvv::ComponentRegistry::create(allCapabilities());
+    const std::vector<dvv::ComponentStatus> sources = registry->list<dvv::media::ISourceProvider>();
     for (const dvv::ComponentStatus& status : registry->list()) {
         const std::string id(status.info.id);
         CAPTURE(id);
@@ -100,15 +99,10 @@ TEST_CASE("conformance: every component is available, valid, created and destroy
             FAIL_CHECK("unavailable: " << reason);
             continue;
         }
-        REQUIRE(status.schema != nullptr);
-        CHECK(status.schema->resolve({}).has_value());
         CHECK(!status.info.name.empty());
         CHECK(status.info.version >= 1);
-        if (status.info.kind != dvv::Kind::Source) {
-            // v1.0 has source components only; another kind needs its interface here (v1.x).
-            FAIL_CHECK("no interface for kind " << std::string(dvv::kindName(status.info.kind)));
-            continue;
-        }
+        // v1.0 has source components only; another interface needs its own list here (v1.x).
+        CHECK(isSource(sources, status.info.id));
 
         const std::size_t live_before = lifetimes.liveCount();
         {
@@ -182,7 +176,7 @@ TEST_CASE("conformance: the ffmpeg provider is available with the FFmpeg capabil
         statuses, [](const dvv::ComponentStatus& entry) { return entry.info.id == "ffmpeg"; });
     REQUIRE(status != statuses.end());
     CHECK(status->available());
-    CHECK(status->info.kind == dvv::Kind::Source);
+    CHECK(isSource(registry->list<dvv::media::ISourceProvider>(), "ffmpeg"));
 
     const std::size_t live_before = lifetimes.liveCount();
     {
@@ -221,7 +215,7 @@ TEST_CASE("conformance: the lavfi provider needs the ffmpeg.lavfi capability") {
         dvv::ComponentRegistry::create(dvv::Capabilities{"ffmpeg", "ffmpeg.lavfi"});
     const dvv::ComponentStatus status = find(registry->list());
     CHECK(status.available());
-    CHECK(status.info.kind == dvv::Kind::Source);
+    CHECK(isSource(registry->list<dvv::media::ISourceProvider>(), "lavfi"));
     const std::size_t live_before = lifetimes.liveCount();
     {
         auto created = registry->createComponent<dvv::media::ISourceProvider>("lavfi");

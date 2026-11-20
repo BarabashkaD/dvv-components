@@ -33,10 +33,10 @@ endfunction()
 
 set(link_a "\\$<LINK_LIBRARY:WHOLE_ARCHIVE,dvv_component_probe_a>")
 set(link_b "\\$<LINK_LIBRARY:WHOLE_ARCHIVE,dvv_component_probe_b>")
-check(default 0 "registers=<probe\\.a=Source;probe\\.b=Source;probe_b=Tool> libraries=<dvv_component_probe_a;dvv_component_probe_b> probe_a_target=<yes> app_links=<${link_a};${link_b}>")
-check(probe_a_off 0 "dvv component probe_a: off \\(DVV_COMPONENT_PROBE_A\\).*registers=<probe_b=Tool> libraries=<dvv_component_probe_b> probe_a_target=<no> app_links=<${link_b}>"
+check(default 0 "registers=<probe\\.a=Source;probe\\.b=Source;probe_b=Source> ids=<probe\\.a;probe\\.b;probe_b> libraries=<dvv_component_probe_a;dvv_component_probe_b> probe_a_target=<yes> app_links=<${link_a};${link_b}>")
+check(probe_a_off 0 "dvv component probe_a: off \\(DVV_COMPONENT_PROBE_A\\).*registers=<probe_b=Source> ids=<probe_b> libraries=<dvv_component_probe_b> probe_a_target=<no> app_links=<${link_b}>"
       -DDVV_COMPONENT_PROBE_A=OFF)
-check(bad_kind 1 "dvv_add_component\\(probe_bad\\): KIND must be one of Source, FormatDetector, Exporter, Tool, Metric, Analyser, Processor")
+check(old_kind 0 "registers=<probe_a=Gadget> ids=<probe_a> libraries")
 check(bad_id 1 "dvv_add_component\\(Probe-Bad\\): the id must match")
 check(twice 1 "dvv_add_component\\(probe_b\\): component 'probe\\.same' is registered twice")
 message(STATUS "component option tests passed")
