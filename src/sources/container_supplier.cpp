@@ -567,7 +567,7 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
     }
     DVV_TRY(const media::ColourSpec query,
             checkContainerQuery(
-                uri, ContainerFacts{
+                uri, ContainerInfo{
                          .format = format->format, .width = width, .height = height, .fps = fps}));
 
     // 10. Colour: the frame's tags, then the stream's (per field; both logged when they differ),

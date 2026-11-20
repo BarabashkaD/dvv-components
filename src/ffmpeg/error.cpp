@@ -2,29 +2,16 @@
 
 #include "dvv/base/error.h"
 
-#include <array>
 #include <cerrno>
 #include <format>
+#include <optional>
 #include <source_location>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 
 #include "ffmpeg/api.h"
 
 namespace dvv::components::ffmpeg {
-namespace {
-
-// The table, or nullptr when FFmpeg is not loaded (error paths must not throw).
-const Api* loadedApi() noexcept {
-    try {
-        return &api();
-    } catch (const std::logic_error&) {
-        return nullptr;
-    }
-}
-
-}  // namespace
 
 void FormatContextDeleter::operator()(AVFormatContext* context) const noexcept {
     if (context != nullptr) {
@@ -90,13 +77,9 @@ Errc errcForAverror(int averror) noexcept {
 
 Error ffmpegError(std::string_view call, int averror, std::source_location where) {
     std::string message;
-    if (const Api* table = loadedApi(); table != nullptr) {
-        std::array<char, AV_ERROR_MAX_STRING_SIZE> text{};
-        if (table->av_strerror(averror, text.data(), text.size()) == 0 && text.front() != '\0') {
-            message = std::format("{} failed: {} (AVERROR {})", call, text.data(), averror);
-        }
-    }
-    if (message.empty()) {
+    if (const std::optional<std::string> text = averrorText(averror)) {
+        message = std::format("{} failed: {} (AVERROR {})", call, *text, averror);
+    } else {
         message = std::format("{} failed (AVERROR {})", call, averror);
     }
     return Error{.code = errcForAverror(averror),

@@ -7,7 +7,9 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <source_location>
+#include <string>
 #include <string_view>
 
 #include "dvv/base/error.h"
@@ -109,6 +111,10 @@ struct Api {
 // The loaded table. Throws std::logic_error("FFmpeg is not loaded") unless FfmpegStatus::core;
 // callers exist only where the capability does (a provider's probe requires it).
 [[nodiscard]] const Api& api();
+
+// av_strerror's text for `averror`. Nullopt when FFmpeg is not loaded or av_strerror has no text.
+// Does not throw.
+[[nodiscard]] std::optional<std::string> averrorText(int averror);
 
 // The process-wide stop generation (design v2 D5, §5.4): read with acquire; stopFfmpegSources()
 // increments it with release. A source worker remembers the value it was created with and ends its

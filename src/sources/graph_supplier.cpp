@@ -2,7 +2,6 @@
 
 #include "sources/graph_supplier.h"
 
-#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -36,15 +35,6 @@ Error sourceClosed() {
     return Error{.code = Errc::Internal, .message = "source closed", .where = {}, .cause = nullptr};
 }
 
-// av_strerror's text, or "AVERROR <n>" when it has none.
-std::string errorText(int averror) {
-    std::array<char, AV_ERROR_MAX_STRING_SIZE> text{};
-    if (api().av_strerror(averror, text.data(), text.size()) == 0 && text.front() != '\0') {
-        return text.data();
-    }
-    return std::format("AVERROR {}", averror);
-}
-
 // A parse or configure error of the graph: AVERROR(ENOMEM) -> OutOfMemory (ffmpegError of the
 // call); any other -> Format "the lavfi graph is invalid: <text> (AVERROR <n>)" (plan choice: a
 // typo in a user graph is an input error).
@@ -52,11 +42,13 @@ Error graphError(std::string_view call, int averror) {
     if (averror == AVERROR(ENOMEM)) {
         return ffmpeg::ffmpegError(call, averror);
     }
-    return Error{.code = Errc::Format,
-                 .message = std::format("the lavfi graph is invalid: {} (AVERROR {})",
-                                        errorText(averror), averror),
-                 .where = {},
-                 .cause = nullptr};
+    return Error{
+        .code = Errc::Format,
+        .message = std::format(
+            "the lavfi graph is invalid: {} (AVERROR {})",
+            ffmpeg::averrorText(averror).value_or(std::format("AVERROR {}", averror)), averror),
+        .where = {},
+        .cause = nullptr};
 }
 
 Error graphEnded(std::int64_t produced) {

@@ -52,6 +52,7 @@ void stopFfmpegSources() noexcept;
 
 namespace detail {
 // What the loader learned about one library; pure checks, unit-tested without FFmpeg.
+// Deprecated name (0.3.0): use LibraryInfo; at 1.0.0 the struct is LibraryInfo and this name goes.
 struct LibraryFacts {
     std::string name;              // "avutil", "avcodec", ...
     unsigned runtimeVersion = 0;   // <lib>_version() (AV_VERSION_INT packing)
@@ -59,10 +60,11 @@ struct LibraryFacts {
     std::string licence;           // <lib>_license()
     std::string configuration;     // <lib>_configuration()
 };
+using LibraryInfo = LibraryFacts;  // the name to use
 // The first problem in `libraries` (in order), worded to follow "FFmpeg in <dir> (<source>) ", or
 // nullopt when every library passes: major == compiled major, minor >= compiled minor, licence
 // starts with "LGPL", configuration contains neither "--enable-gpl" nor "--enable-nonfree".
-[[nodiscard]] std::optional<std::string> refusalReason(std::span<const LibraryFacts> libraries);
+[[nodiscard]] std::optional<std::string> refusalReason(std::span<const LibraryInfo> libraries);
 }  // namespace detail
 
 }  // namespace dvv::components

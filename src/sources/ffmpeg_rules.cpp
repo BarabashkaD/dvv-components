@@ -120,7 +120,7 @@ int matchConfidence(int score, std::string_view demuxer_name) noexcept {
     return score > CONTENT_SCORE && !excludedDemuxer(demuxer_name) ? CONTENT_CONFIDENCE : 0;
 }
 
-Result<media::ColourSpec> checkContainerQuery(const Uri& uri, const ContainerFacts& facts) {
+Result<media::ColourSpec> checkContainerQuery(const Uri& uri, const ContainerInfo& facts) {
     for (const auto& [name, value] : uri.params) {
         const bool own = std::ranges::find(OWN_PARAMETERS, name) != OWN_PARAMETERS.end();
         const bool colour =

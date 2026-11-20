@@ -46,7 +46,7 @@ media::ColourParams colour(media::ColourMatrix matrix, media::ColourRange range,
 dvv::Result<media::ColourSpec> checkQuery(std::string_view query) {
     const auto uri = dvv::parseUri(std::string("file:x.mkv") + std::string(query));
     REQUIRE_MESSAGE(uri.has_value(), std::string(query));
-    const detail::ContainerFacts facts{
+    const detail::ContainerInfo facts{
         .format = formatId("yuv420p10le"), .width = 64, .height = 48, .fps = {25, 1}};
     return detail::checkContainerQuery(*uri, facts);
 }
@@ -144,7 +144,7 @@ TEST_SUITE("ffmpeg_rules") {
             // A yuvj alias names its yuv*p format (the range stays the container's or `range`).
             const auto uri = dvv::parseUri("file:x.mkv?fmt=yuvj420p");
             REQUIRE(uri.has_value());
-            const detail::ContainerFacts facts{
+            const detail::ContainerInfo facts{
                 .format = formatId("yuv420p"), .width = 64, .height = 48, .fps = {25, 1}};
             const auto alias = detail::checkContainerQuery(*uri, facts);
             REQUIRE_MESSAGE(alias.has_value(), alias.error().describe());
@@ -411,7 +411,7 @@ TEST_SUITE("ffmpeg_rules") {
     }
 
     TEST_CASE("ffmpeg rules: the container's rate defaults to FALLBACK_FPS") {
-        CHECK(detail::ContainerFacts{}.fps == media::FALLBACK_FPS);
+        CHECK(detail::ContainerInfo{}.fps == media::FALLBACK_FPS);
     }
 
     TEST_CASE("ffmpeg rules: lossless codec allowlist") {

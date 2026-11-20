@@ -8,6 +8,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "dvv/base/error.h"
@@ -21,33 +22,37 @@ namespace {
 
 using dvv::components::FfmpegLoadOptions;
 using dvv::components::FfmpegStatus;
-using dvv::components::detail::LibraryFacts;
+using dvv::components::detail::LibraryInfo;
 using dvv::components::detail::planSearch;
 using dvv::components::detail::refusalReason;
 using dvv::components::detail::SearchSource;
 using dvv::components::detail::sourceName;
 using dvv::components::detail::versionText;
 
+// The old name stays until 1.0.0.
+static_assert(
+    std::is_same_v<dvv::components::detail::LibraryFacts, dvv::components::detail::LibraryInfo>);
+
 constexpr unsigned v(unsigned major, unsigned minor, unsigned micro) {
     return (major << 16) | (minor << 8) | micro;
 }
 
-std::vector<LibraryFacts> facts() {
-    std::vector<LibraryFacts> libraries;
+std::vector<LibraryInfo> facts() {
+    std::vector<LibraryInfo> libraries;
     for (const char* name :
          {"avutil", "avcodec", "avformat", "swscale", "swresample", "avfilter"}) {
         libraries.push_back(
-            LibraryFacts{.name = name,
-                         .runtimeVersion = v(60, 8, 100),
-                         .compiledVersion = v(60, 8, 100),
-                         .licence = "LGPL version 2.1 or later",
-                         .configuration = "--prefix=/x --enable-shared --disable-static"});
+            LibraryInfo{.name = name,
+                        .runtimeVersion = v(60, 8, 100),
+                        .compiledVersion = v(60, 8, 100),
+                        .licence = "LGPL version 2.1 or later",
+                        .configuration = "--prefix=/x --enable-shared --disable-static"});
     }
     return libraries;
 }
 
-LibraryFacts& library(std::vector<LibraryFacts>& libraries, const std::string& name) {
-    for (LibraryFacts& entry : libraries) {
+LibraryInfo& library(std::vector<LibraryInfo>& libraries, const std::string& name) {
+    for (LibraryInfo& entry : libraries) {
         if (entry.name == name) {
             return entry;
         }
@@ -113,7 +118,7 @@ TEST_CASE("refusalReason: a GPL or nonfree build is refused") {
 
 TEST_CASE("refusalReason: versions must match the headers") {
     auto libraries = facts();
-    LibraryFacts& avformat = library(libraries, "avformat");
+    LibraryInfo& avformat = library(libraries, "avformat");
     avformat.compiledVersion = v(62, 3, 100);
     avformat.runtimeVersion = v(61, 3, 100);
     CHECK(refusalReason(libraries) ==
@@ -267,4 +272,8 @@ TEST_CASE("addFfmpegCapabilities follows the status") {
         addFfmpegCapabilities(status, caps);
         CHECK(caps.names() == std::vector<std::string>{"ffmpeg", "ffmpeg.lavfi"});
     }
+}
+
+TEST_CASE("averrorText without FFmpeg loaded is empty") {
+    CHECK_FALSE(dvv::components::ffmpeg::averrorText(-22).has_value());
 }

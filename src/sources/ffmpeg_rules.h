@@ -106,7 +106,7 @@ inline constexpr std::array<std::string_view, 61> LAVFI_FILE_FILTERS{
 [[nodiscard]] bool excludedDemuxer(std::string_view demuxer_name) noexcept;
 
 // What the container decides (D28); fps already reduced.
-struct ContainerFacts {
+struct ContainerInfo {
     media::FormatId format = 0;
     std::uint32_t width = 0, height = 0;
     media::Rational fps = media::FALLBACK_FPS;
@@ -121,7 +121,7 @@ struct ContainerFacts {
 // colour as written (merged() gives the D28 override, whose Unspecified fields are not overridden;
 // colourParameters() gives the resolved URI's colour keys).
 [[nodiscard]] Result<media::ColourSpec> checkContainerQuery(const Uri& uri,
-                                                            const ContainerFacts& facts);
+                                                            const ContainerInfo& facts);
 // D5R §3.1: the query's standard (colour=) replaces the matrix (with kr/kb), the curve and the
 // primaries of `mapped` (an RGB or gray model keeps the mapped matrix: the standard has none
 // there, and a YUV model tagged with the GBR matrix keeps it, design §3.3 rule 5); the query's

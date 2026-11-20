@@ -24,7 +24,7 @@ unsigned minorOf(unsigned packed) noexcept {
     return (packed >> 8) & 0xffU;
 }
 
-std::optional<std::string> libraryProblem(const LibraryFacts& library) {
+std::optional<std::string> libraryProblem(const LibraryInfo& library) {
     if (majorOf(library.runtimeVersion) != majorOf(library.compiledVersion)) {
         return std::format("has {} {}, but rawreel was built for {} (the major version must match)",
                            library.name, versionText(library.runtimeVersion),
@@ -56,11 +56,11 @@ std::optional<std::string> libraryProblem(const LibraryFacts& library) {
 
 }  // namespace
 
-std::optional<std::string> refusalReason(std::span<const LibraryFacts> libraries) {
+std::optional<std::string> refusalReason(std::span<const LibraryInfo> libraries) {
     if (libraries.empty()) {
         return "has no libraries to check";
     }
-    for (const LibraryFacts& library : libraries) {
+    for (const LibraryInfo& library : libraries) {
         if (auto problem = libraryProblem(library)) {
             return problem;
         }
