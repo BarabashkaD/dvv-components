@@ -141,7 +141,8 @@ TEST_SUITE("ffmpeg") {
         api.av_log(nullptr, AV_LOG_ERROR, "dvv-test-error %d\n", 1);
         api.av_log(nullptr, AV_LOG_WARNING, "dvv-test-warning\n");
         api.av_log(nullptr, AV_LOG_INFO, "dvv-test-info\n");
-        dvv::Logger::instance().clearSinks();
+        // The sink stays attached but gets nothing more; the other sinks keep theirs.
+        dvv::Logger::instance().setSinkLevel(*sink, dvv::LogLevel::Off);
 
         const std::vector<std::string> lines = sink->lines();
         const std::string_view warn = dvv::logLevelName(dvv::LogLevel::Warn);
@@ -265,7 +266,8 @@ TEST_SUITE("ffmpeg") {
         auto sink = std::make_shared<dvv::MemorySink>();
         dvv::Logger::instance().addSink(sink);
         const auto registry = loadWithDirectory(folder);
-        dvv::Logger::instance().clearSinks();
+        // The sink stays attached but gets nothing more; the other sinks keep theirs.
+        dvv::Logger::instance().setSinkLevel(*sink, dvv::LogLevel::Off);
 
         REQUIRE(registry != nullptr);
         const dvv::ModuleStatus* module = registry->module(FFMPEG_MODULE);
