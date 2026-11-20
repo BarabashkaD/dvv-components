@@ -13,6 +13,7 @@
 #include "dvv/base/error.h"
 #include "dvv/base/lifetime.h"
 #include "dvv/base/task.h"
+#include "dvv/components/ffmpeg.h"
 #include "dvv/media/source.h"
 #include "dvv/media/source_factory.h"
 #include "dvv/registry/capabilities.h"
@@ -30,7 +31,7 @@ public:
         return {.id = "ffmpeg", .name = "FFmpeg container files", .version = 1};
     }
     static std::expected<void, Unavailable> probe(const Capabilities& caps) {
-        return require(caps, {"ffmpeg"});
+        return require(caps, {FFMPEG_CAPABILITY});
     }
 
     [[nodiscard]] std::span<const std::string_view> schemes() const noexcept override;  // file

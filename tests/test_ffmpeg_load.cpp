@@ -25,6 +25,8 @@
 namespace {
 
 using dvv::components::addFfmpegCapabilities;
+using dvv::components::FFMPEG_CAPABILITY;
+using dvv::components::FFMPEG_LAVFI_CAPABILITY;
 using dvv::components::FfmpegLoadOptions;
 using dvv::components::loadFfmpeg;
 
@@ -109,8 +111,8 @@ TEST_SUITE("ffmpeg") {
     TEST_CASE("loader: the capabilities follow the status") {
         dvv::Capabilities caps;
         addFfmpegCapabilities(loadFfmpeg(), caps);
-        CHECK(caps.has("ffmpeg"));
-        CHECK(caps.has("ffmpeg.lavfi"));
+        CHECK(caps.has(FFMPEG_CAPABILITY));
+        CHECK(caps.has(FFMPEG_LAVFI_CAPABILITY));
     }
 }
 

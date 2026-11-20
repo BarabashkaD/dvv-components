@@ -11,14 +11,22 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 
 #include "dvv/registry/capabilities.h"
 
 namespace dvv::components {
 
+// The capabilities of the FFmpeg module. Each name is defined here once; a component that needs
+// FFmpeg probes for these constants. The values are a contract: they never change.
+inline constexpr std::string_view FFMPEG_CAPABILITY = "ffmpeg";              // avutil, avcodec,
+                                                                             // avformat, swscale,
+                                                                             // swresample
+inline constexpr std::string_view FFMPEG_LAVFI_CAPABILITY = "ffmpeg.lavfi";  // also avfilter
+
 struct FfmpegStatus {
-    bool core = false;    // capability "ffmpeg": avutil, avcodec, avformat, swscale, swresample
-    bool lavfi = false;   // capability "ffmpeg.lavfi": core and avfilter
+    bool core = false;    // FFMPEG_CAPABILITY: avutil, avcodec, avformat, swscale, swresample
+    bool lavfi = false;   // FFMPEG_LAVFI_CAPABILITY: core and avfilter
     std::string reason;   // why not; empty when both are available (with core only: why not lavfi)
     std::string version;  // av_version_info(), e.g. "n8.1.3"
     std::string licence;  // avutil_license()
@@ -40,7 +48,7 @@ struct FfmpegLoadOptions {
 // design D3 (refusalReason) and every function of the table resolves. Installs the av_log callback.
 // Adds nothing to a registry.
 [[nodiscard]] const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options = {});
-// Adds "ffmpeg" when status.core and "ffmpeg.lavfi" when status.lavfi.
+// Adds FFMPEG_CAPABILITY when status.core and FFMPEG_LAVFI_CAPABILITY when status.lavfi.
 void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps);
 
 // Deprecated (0.3.0): detach the origin (dvv-media FrameStore::detach) or stop the open's token

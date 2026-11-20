@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "dvv/base/lifetime.h"
+#include "dvv/components/ffmpeg.h"
 #include "dvv/media/source_factory.h"
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
@@ -25,7 +26,8 @@ using dvv::components::testing::ExpectedComponent;
 
 // Every capability a v1.0 component probes for; later components add theirs here.
 const dvv::Capabilities& allCapabilities() {
-    static const dvv::Capabilities ALL_CAPABILITIES{"ffmpeg", "ffmpeg.lavfi", "test.echo"};
+    static const dvv::Capabilities ALL_CAPABILITIES{
+        dvv::components::FFMPEG_CAPABILITY, dvv::components::FFMPEG_LAVFI_CAPABILITY, "test.echo"};
     return ALL_CAPABILITIES;
 }
 
@@ -163,14 +165,21 @@ TEST_CASE(
     }
 }
 
+TEST_CASE("conformance: the capability constants keep their values") {
+    static_assert(dvv::components::FFMPEG_CAPABILITY == "ffmpeg");
+    static_assert(dvv::components::FFMPEG_LAVFI_CAPABILITY == "ffmpeg.lavfi");
+    CHECK(dvv::components::FFMPEG_CAPABILITY == "ffmpeg");
+    CHECK(dvv::components::FFMPEG_LAVFI_CAPABILITY == "ffmpeg.lavfi");
+}
+
 TEST_CASE("conformance: the ffmpeg provider is available with the FFmpeg capabilities") {
     if (!cmakeHas("ffmpeg")) {
         MESSAGE("the ffmpeg component is off (DVV_COMPONENT_FFMPEG)");
         return;
     }
     auto& lifetimes = dvv::LifetimeRegistry::instance();
-    const auto registry =
-        dvv::ComponentRegistry::create(dvv::Capabilities{"ffmpeg", "ffmpeg.lavfi"});
+    const auto registry = dvv::ComponentRegistry::create(dvv::Capabilities{
+        dvv::components::FFMPEG_CAPABILITY, dvv::components::FFMPEG_LAVFI_CAPABILITY});
     const std::vector<dvv::ComponentStatus> statuses = registry->list();
     const auto status = std::ranges::find_if(
         statuses, [](const dvv::ComponentStatus& entry) { return entry.info.id == "ffmpeg"; });
@@ -202,17 +211,19 @@ TEST_CASE("conformance: the lavfi provider needs the ffmpeg.lavfi capability") {
         return *status;
     };
     {
-        const auto registry = dvv::ComponentRegistry::create(dvv::Capabilities{"ffmpeg"});
+        const auto registry =
+            dvv::ComponentRegistry::create(dvv::Capabilities{dvv::components::FFMPEG_CAPABILITY});
         const dvv::ComponentStatus status = find(registry->list());
         CHECK_FALSE(status.available());
         REQUIRE(status.unavailable.has_value());
         if (status.unavailable) {
-            CHECK(status.unavailable->reason.find("ffmpeg.lavfi") != std::string::npos);
+            CHECK(status.unavailable->reason.find(dvv::components::FFMPEG_LAVFI_CAPABILITY) !=
+                  std::string::npos);
         }
     }
     auto& lifetimes = dvv::LifetimeRegistry::instance();
-    const auto registry =
-        dvv::ComponentRegistry::create(dvv::Capabilities{"ffmpeg", "ffmpeg.lavfi"});
+    const auto registry = dvv::ComponentRegistry::create(dvv::Capabilities{
+        dvv::components::FFMPEG_CAPABILITY, dvv::components::FFMPEG_LAVFI_CAPABILITY});
     const dvv::ComponentStatus status = find(registry->list());
     CHECK(status.available());
     CHECK(isSource(registry->list<dvv::media::ISourceProvider>(), "lavfi"));

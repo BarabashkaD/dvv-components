@@ -337,10 +337,10 @@ const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
 
 void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps) {
     if (status.core) {
-        caps.add("ffmpeg");
+        caps.add(FFMPEG_CAPABILITY);
     }
     if (status.lavfi) {
-        caps.add("ffmpeg.lavfi");
+        caps.add(FFMPEG_LAVFI_CAPABILITY);
     }
 }
 
