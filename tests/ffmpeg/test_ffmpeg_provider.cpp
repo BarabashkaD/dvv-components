@@ -26,6 +26,7 @@
 #include "dvv/base/log.h"
 #include "dvv/base/task.h"
 #include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/base/when_all.h"
 #include "dvv/components/ffmpeg.h"
 #include "dvv/media/frame_store.h"
@@ -593,6 +594,22 @@ TEST_SUITE("ffmpeg") {
         }
     }
 
+#if defined(__linux__)
+    // APFS and NTFS refuse a name that is not UTF-8, so only Linux can hold such a file.
+    TEST_CASE("ffmpeg: a container whose name is not UTF-8 opens from its URI") {
+        FfmpegHarness harness;
+        const TemporaryDirectory folder;
+        const std::filesystem::path copy = folder.path() / dvv::pathFromText(
+                                                               "seq\xFF"
+                                                               ".mkv");
+        dvv::components::testing::writeFile(copy, dvv::components::testing::readFile(fixture(SEQ)));
+        const auto hashes = referenceHashes("seq.framemd5");
+        REQUIRE(!hashes.empty());
+        const auto source = harness.open("file:" + dvv::pathText(copy));
+        CHECK(frameHash(harness, source, 0) == hashes[0].md5);
+    }
+#endif
+
     TEST_CASE("ffmpeg: a failed Sequential reopen leaves a defined error state") {
         auto opened = dvv::components::detail::ContainerSupplier::open(fixturePath(SEQ), running());
         REQUIRE_MESSAGE(opened.has_value(), opened.error().describe());
@@ -601,7 +618,7 @@ TEST_SUITE("ffmpeg") {
         REQUIRE(supplier.frame(20, running()).has_value());  // the ring holds 13..20
         // The injected failure: the next restart reopens a file that does not exist.
         const TemporaryDirectory folder;
-        supplier.setPathForTest(dvv::media::utf8FromPath(folder.path() / "gone.mkv"));
+        supplier.setPathForTest(dvv::pathText(folder.path() / "gone.mkv"));
         // Behind the ring (a restart), then forward from the old position, then both again.
         for (const std::int64_t index : {1, 21, 25, 0, 29}) {
             CAPTURE(index);

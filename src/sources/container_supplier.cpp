@@ -22,6 +22,7 @@
 #include "dvv/base/error.h"
 #include "dvv/base/log.h"
 #include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/media/pixel_format.h"
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
@@ -633,7 +634,7 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
 Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(const std::filesystem::path& path) {
     Uri uri;
     uri.scheme = "file";
-    uri.path = media::utf8FromPath(path);
+    uri.path = pathText(path);
     DVV_TRY(OpenedContainer opened, openContainer(uri));
     return std::move(opened.worker);
 }

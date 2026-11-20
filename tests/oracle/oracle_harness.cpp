@@ -23,6 +23,7 @@
 #include "dvv/base/executors.h"
 #include "dvv/base/task.h"
 #include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/media/frame.h"
 #include "dvv/media/frame_store.h"
 #include "dvv/media/source.h"
@@ -81,14 +82,14 @@ std::optional<std::filesystem::path> oracleFixtureDirectory() {
     if (root.empty()) {
         return std::nullopt;
     }
-    std::string text = readText(media::pathFromUtf8(root) / "current.txt");
+    std::string text = readText(dvv::pathFromText(root) / "current.txt");
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.pop_back();
     }
     if (text.empty()) {
         return std::nullopt;
     }
-    std::filesystem::path directory = media::pathFromUtf8(text);
+    std::filesystem::path directory = dvv::pathFromText(text);
     std::error_code error;
     if (!std::filesystem::is_regular_file(directory / "done.stamp", error)) {
         return std::nullopt;
@@ -145,7 +146,7 @@ std::filesystem::path oracleFile(std::string_view name) {
     const auto found = oracleFixtureDirectory();
     REQUIRE_MESSAGE(found.has_value(), "no oracle fixtures (DVV_ORACLE_FIXTURES)");
     const std::filesystem::path path =
-        found.value_or(std::filesystem::path{}) / media::pathFromUtf8(name);
+        found.value_or(std::filesystem::path{}) / dvv::pathFromText(name);
     std::error_code error;
     REQUIRE_MESSAGE(std::filesystem::is_regular_file(path, error),
                     "missing fixture " << genericUtf8(path));

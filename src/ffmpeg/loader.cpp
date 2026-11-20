@@ -20,8 +20,8 @@
 #include "dvv/base/environment.h"
 #include "dvv/base/log.h"
 #include "dvv/base/paths.h"
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/media/types.h"
 #include "dvv/platform/dynamic_library.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
@@ -246,7 +246,7 @@ Located locate(const FfmpegLoadOptions& options) {
         if (i > 0) {
             looked += i + 1 == plan.directories.size() ? " and " : ", ";
         }
-        looked += media::utf8FromPath(plan.directories[i]);
+        looked += pathDisplayText(plan.directories[i]);
     }
     return {.directory = {},
             .source = plan.source,
@@ -263,15 +263,14 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
         return;
     }
     const std::filesystem::path directory = located.directory.lexically_normal();
-    const std::string where = std::format("FFmpeg in {} ({})", media::utf8FromPath(directory),
+    const std::string where = std::format("FFmpeg in {} ({})", pathDisplayText(directory),
                                           detail::sourceName(located.source));
 
     OpenedLibraries opened;
     std::string lavfi_reason;
     for (const Library library : LOAD_ORDER) {
-        auto handle =
-            platform::DynamicLibrary::open(media::utf8FromPath(directory / libraryFile(library)),
-                                           platform::LibrarySearch::DllDirectory);
+        auto handle = platform::DynamicLibrary::open(pathText(directory / libraryFile(library)),
+                                                     platform::LibrarySearch::DllDirectory);
         if (!handle) {
             if (library == Library::Avfilter) {
                 lavfi_reason = std::format("{}: libavfilter is not available: {}", where,

@@ -21,6 +21,7 @@
 #include "dvv/base/executors.h"
 #include "dvv/base/lifetime.h"
 #include "dvv/base/task.h"
+#include "dvv/base/utf8.h"
 #include "dvv/base/when_all.h"
 #include "dvv/media/frame_store.h"
 #include "dvv/media/pixel_format.h"
@@ -51,12 +52,12 @@ std::filesystem::path lavfiDirectory() {
     const std::string root = dvv::getEnvironment("DVV_LAVFI_FIXTURES").value_or("");
     REQUIRE_MESSAGE(!root.empty(), "DVV_LAVFI_FIXTURES is not set");
     const std::vector<std::byte> bytes =
-        dvv::components::testing::readFile(media::pathFromUtf8(root) / "current.txt");
+        dvv::components::testing::readFile(dvv::pathFromText(root) / "current.txt");
     std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.pop_back();
     }
-    return media::pathFromUtf8(text);
+    return dvv::pathFromText(text);
 }
 
 std::vector<LavfiFixture> manifest() {

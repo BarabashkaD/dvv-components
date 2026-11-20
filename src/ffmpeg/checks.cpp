@@ -8,8 +8,8 @@
 #include <string_view>
 #include <utility>
 
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/media/types.h"
 #include "ffmpeg/loader_detail.h"
 
 namespace dvv::components::detail {
@@ -76,7 +76,7 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
         plan.source = SearchSource::Options;
         if (!options.directory->is_absolute()) {
             plan.error = std::format("the FFmpeg directory must be absolute (got '{}')",
-                                     media::utf8FromPath(*options.directory));
+                                     pathDisplayText(*options.directory));
             return plan;
         }
         plan.directories.push_back(*options.directory);
@@ -84,9 +84,10 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
     }
     if (environment && !environment->empty()) {
         plan.source = SearchSource::Environment;
-        std::filesystem::path directory = media::pathFromUtf8(*environment);
+        std::filesystem::path directory = pathFromText(*environment);
         if (!directory.is_absolute()) {
-            plan.error = std::format("DVV_FFMPEG_DIR must be absolute (got '{}')", *environment);
+            plan.error = std::format("DVV_FFMPEG_DIR must be absolute (got '{}')",
+                                     pathDisplayText(directory));
             return plan;
         }
         plan.directories.push_back(std::move(directory));

@@ -11,8 +11,8 @@
 #include <vector>
 
 #include "dvv/base/error.h"
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/media/types.h"
 #include "dvv/registry/capabilities.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
@@ -152,7 +152,7 @@ TEST_CASE("planSearch: explicit directories are final and must be absolute") {
         CHECK(plan.error == "the FFmpeg directory must be absolute (got 'ffmpeg')");
     }
     {
-        const auto plan = planSearch(FfmpegLoadOptions{}, dvv::media::utf8FromPath(a), "");
+        const auto plan = planSearch(FfmpegLoadOptions{}, dvv::pathText(a), "");
         CHECK(plan.directories == std::vector<std::filesystem::path>{a});
         CHECK(plan.source == SearchSource::Environment);
         CHECK(plan.error.empty());
@@ -166,6 +166,35 @@ TEST_CASE("planSearch: explicit directories are final and must be absolute") {
     CHECK(sourceName(SearchSource::Environment) == "DVV_FFMPEG_DIR");
     CHECK(sourceName(SearchSource::Default) == "default search");
 }
+
+#if !defined(_WIN32)
+TEST_CASE("planSearch keeps a non-UTF-8 DVV_FFMPEG_DIR") {
+    // A POSIX path is bytes; the search keeps them, and the messages show U+FFFD for them.
+    const auto kept = planSearch({},
+                                 "/tmp/a\xFF"
+                                 "b",
+                                 "");
+    CHECK(kept.directories.size() == 1);
+    if (!kept.directories.empty()) {
+        CHECK(kept.directories.front().native().find('\xFF') != std::string::npos);
+    }
+    const auto relative = planSearch({},
+                                     "a\xFF"
+                                     "b",
+                                     "");
+    CHECK(relative.error ==
+          "DVV_FFMPEG_DIR must be absolute (got 'a\xEF\xBF\xBD"
+          "b')");
+    FfmpegLoadOptions options;
+    options.directory = dvv::pathFromText(
+        "a\xFF"
+        "b");
+    const auto given = planSearch(options, std::nullopt, "");
+    CHECK(given.error ==
+          "the FFmpeg directory must be absolute (got 'a\xEF\xBF\xBD"
+          "b')");
+}
+#endif
 
 TEST_CASE("planSearch: the default search looks next to the executable") {
     const std::filesystem::path a = absoluteDirectory();
