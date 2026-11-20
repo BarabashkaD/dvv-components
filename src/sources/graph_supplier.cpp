@@ -8,6 +8,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,6 +21,7 @@
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/ffmpeg_rules.h"
 #include "sources/frame_ring.h"
@@ -240,7 +242,7 @@ Result<const AVFrame*> GraphSupplier::frame(std::int64_t index, const StopCheck&
 
 // ---- open steps 1-5 ----
 
-Result<OpenedGraph> openGraph(const Uri& uri) {
+Result<OpenedSource> openGraph(const Uri& uri, std::stop_token /*stop*/) {
     // 1. The graph is the URI's body exactly as given (lavfi: is an opaque scheme, so parseUri
     // keeps it whole); a '?' would start a query, which lavfi: URIs do not take (D28).
     const std::string& graph = uri.body;
@@ -306,7 +308,7 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
     supplier->resizeRing(ringCapacity(layout.bytes));
 
     // 5. The source's info and its worker (the thread starts here).
-    OpenedGraph opened;
+    OpenedSource opened;
     media::SourceInfo& info = opened.info;
     info.desc = desc;
     info.fps = fps;
@@ -328,7 +330,7 @@ Result<std::unique_ptr<AvWorker>> makeGraphWorkerForTest(std::string graph) {
     Uri uri;
     uri.scheme = "lavfi";
     uri.body = std::move(graph);
-    DVV_TRY(OpenedGraph opened, openGraph(uri));
+    DVV_TRY(OpenedSource opened, openGraph(uri, std::stop_token{}));
     return std::move(opened.worker);
 }
 

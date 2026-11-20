@@ -5,7 +5,6 @@
 // dvv-components (also used by the compile-fail test).
 
 #include <cstddef>
-#include <cstdint>
 #include <expected>
 #include <memory>
 #include <span>
@@ -19,7 +18,6 @@
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
 #include "dvv/registry/component_registry.h"
-#include "sources/av_worker.h"
 
 namespace dvv::components {
 
@@ -42,21 +40,6 @@ public:
     [[nodiscard]] Task<Result<std::unique_ptr<media::ISource>>> open(
         media::OpenTicket ticket, const media::SourceRequest& request,
         const media::FormatGuess& guess, const media::OpenContext& context) override;
-};
-
-// One opened container file; produce() checks the index, then forwards to the worker.
-class FfmpegSource final : public media::ISource, public Managed<FfmpegSource> {
-public:
-    FfmpegSource(CreationKey<media::SourceFactory> key, media::SourceInfo info,
-                 std::unique_ptr<detail::AvWorker> worker) noexcept;
-
-    [[nodiscard]] const media::SourceInfo& info() const noexcept override { return info_; }
-    [[nodiscard]] Task<Result<media::FrameRef>> produce(std::int64_t index,
-                                                        media::ProduceContext& ctx) override;
-
-private:
-    media::SourceInfo info_;
-    std::unique_ptr<detail::AvWorker> worker_;
 };
 
 }  // namespace dvv::components

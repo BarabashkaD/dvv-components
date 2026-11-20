@@ -7,6 +7,7 @@
 
 #include "dvv/base/lifetime.h"
 #include "echo_provider.h"
+#include "sources/av_source.h"
 #include "sources/ffmpeg_provider.h"
 
 using dvv::components::testing::TestEchoProvider;
@@ -17,7 +18,7 @@ int main() {
     static_assert(!std::is_copy_constructible_v<TestEchoProvider>);
     static_assert(std::is_final_v<dvv::components::FfmpegSourceProvider>);
     static_assert(!std::is_copy_constructible_v<dvv::components::FfmpegSourceProvider>);
-    static_assert(std::is_final_v<dvv::components::FfmpegSource>);
+    static_assert(std::is_final_v<dvv::components::AvSource>);
     return 0;
 #elif DVV_COMPILE_FAIL_CASE == 1
     TestEchoProvider provider(dvv::CreationKey<dvv::ComponentRegistry>(

@@ -72,8 +72,9 @@ target_link_libraries(dvv_components INTERFACE dvv::ffmpeg)
 # FFmpeg source providers (design v2 §4.4): loaded at run time, never linked (D3).
 dvv_add_component(ffmpeg
     SOURCES src/sources/ffmpeg_rules.cpp src/sources/frame_ring.cpp src/sources/av_worker.cpp
-            src/sources/container_supplier.cpp src/sources/ffmpeg_provider.cpp
-            src/sources/graph_supplier.cpp src/sources/lavfi_provider.cpp
+            src/sources/av_source.cpp src/sources/container_supplier.cpp
+            src/sources/ffmpeg_provider.cpp src/sources/graph_supplier.cpp
+            src/sources/lavfi_provider.cpp
     LINK dvv::ffmpeg $<BUILD_INTERFACE:dvv_ffmpeg_internal>
     REGISTERS ffmpeg lavfi)
 

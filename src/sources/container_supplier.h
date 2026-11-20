@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/frame_ring.h"
 
@@ -133,15 +135,10 @@ private:
     std::optional<Expected> expected_;
 };
 
-// The result of open steps 2-12 for one `ffmpeg` URI: the source's info and its worker (which owns
-// the supplier, with frame 0 in its ring).
-struct OpenedContainer {
-    media::SourceInfo info;
-    std::unique_ptr<AvWorker> worker;
-};
-// FfmpegSourceProvider::open's work (it runs on the I/O pool): the supplier, the catalogue format,
-// the frame rate, the D28 query check, the colour, the resolved URI and the worker.
-[[nodiscard]] Result<OpenedContainer> openContainer(const Uri& uri);
+// Open steps 2-12 for one `ffmpeg` URI, the `ffmpeg` provider's OpenSteps (it runs on the I/O
+// pool): the supplier, the catalogue format, the frame rate, the D28 query check, the colour, the
+// resolved URI and the worker (which owns the supplier, with frame 0 in its ring).
+[[nodiscard]] Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop);
 
 // Test seam (stop test): the worker of a file opened with the same code as open (no query).
 [[nodiscard]] Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(

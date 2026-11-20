@@ -14,6 +14,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -29,6 +30,7 @@
 #include "dvv/media/types.h"
 #include "dvv/media/uri_colour.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/ffmpeg_rules.h"
 #include "sources/frame_ring.h"
@@ -535,7 +537,7 @@ Result<void> ContainerSupplier::sendNextPacket(const StopCheck& stopped) {
 
 // ---- open steps 8-12 ----
 
-Result<OpenedContainer> openContainer(const Uri& uri) {
+Result<OpenedSource> openContainer(const Uri& uri, std::stop_token /*stop*/) {
     const ffmpeg::Api& api = ffmpeg::api();
     // One stop generation for the open and the worker: a source whose open overlapped
     // stopFfmpegSources() is born stopped.
@@ -612,7 +614,7 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
     resolved.params.emplace_back("impl", "ffmpeg");
 
     // 12. The source's info and its worker (the thread starts here).
-    OpenedContainer opened;
+    OpenedSource opened;
     media::SourceInfo& info = opened.info;
     info.desc = desc;
     info.fps = fps;
@@ -635,7 +637,7 @@ Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(const std::filesyst
     Uri uri;
     uri.scheme = "file";
     uri.path = pathText(path);
-    DVV_TRY(OpenedContainer opened, openContainer(uri));
+    DVV_TRY(OpenedSource opened, openContainer(uri, std::stop_token{}));
     return std::move(opened.worker);
 }
 

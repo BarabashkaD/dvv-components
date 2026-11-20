@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 
 #include "dvv/base/error.h"
@@ -14,6 +15,7 @@
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/frame_ring.h"
 
@@ -68,14 +70,9 @@ private:
     std::optional<int> expected_format_;  // nullopt until setExpected (first() checks nothing)
 };
 
-// The result of open steps 1-5 for one `lavfi` URI: the source's info and its worker (which owns
-// the supplier, with frame 0 in its ring).
-struct OpenedGraph {
-    media::SourceInfo info;
-    std::unique_ptr<AvWorker> worker;
-};
-// LavfiSourceProvider::open's work (it runs on the I/O pool).
-[[nodiscard]] Result<OpenedGraph> openGraph(const Uri& uri);
+// Open steps 1-5 for one `lavfi` URI, the `lavfi` provider's OpenSteps (it runs on the I/O pool):
+// the source's info and its worker (which owns the supplier, with frame 0 in its ring).
+[[nodiscard]] Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop);
 
 // Test seam (stop test): an AvWorker over GraphSupplier for `graph`, with the same open code.
 [[nodiscard]] Result<std::unique_ptr<AvWorker>> makeGraphWorkerForTest(std::string graph);

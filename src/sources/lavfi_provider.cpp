@@ -4,9 +4,7 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <expected>
-#include <format>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -20,7 +18,7 @@
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
 #include "dvv/registry/component_registry.h"
-#include "sources/av_worker.h"
+#include "sources/av_source.h"
 #include "sources/graph_supplier.h"
 
 namespace dvv::components {
@@ -55,38 +53,11 @@ public:
         const media::FormatGuess& guess, const media::OpenContext& context) override;
 };
 
-// One lavfi graph; produce() checks the index, then forwards to the worker.
-class LavfiSource final : public media::ISource, public Managed<LavfiSource> {
-public:
-    LavfiSource(CreationKey<media::SourceFactory> key, media::SourceInfo info,
-                std::unique_ptr<detail::AvWorker> worker) noexcept
-        : Managed(std::move(key)), info_(std::move(info)), worker_(std::move(worker)) {}
-
-    [[nodiscard]] const media::SourceInfo& info() const noexcept override { return info_; }
-    [[nodiscard]] Task<Result<media::FrameRef>> produce(std::int64_t index,
-                                                        media::ProduceContext& ctx) override {
-        if (index < 0) {
-            co_return makeError(Errc::Internal,
-                                std::format("frame {} is outside [0, unbounded)", index));
-        }
-        // Concurrent calls (the store's prefetch) queue on the worker (§5.4).
-        co_return co_await worker_->produce(index, ctx);
-    }
-
-private:
-    media::SourceInfo info_;
-    std::unique_ptr<detail::AvWorker> worker_;
-};
-
 Task<Result<std::unique_ptr<media::ISource>>> LavfiSourceProvider::open(
     media::OpenTicket ticket, const media::SourceRequest& request,
     const media::FormatGuess& /*guess*/, const media::OpenContext& context) {
-    co_await resumeOn(context.io);  // all FFmpeg work of open runs on the I/O pool (§5.1)
-    detail::OpenedGraph opened = co_try(detail::openGraph(request.uri));
-    std::unique_ptr<media::ISource> source = std::make_unique<LavfiSource>(
-        media::SourceFactory::issueKey<LavfiSource>(std::move(ticket)), std::move(opened.info),
-        std::move(opened.worker));
-    co_return std::move(source);
+    co_return co_await detail::openAvSource(std::move(ticket), request.uri, context.io,
+                                            context.stop, &detail::openGraph);
 }
 
 DVV_REGISTER(media::ISourceProvider, LavfiSourceProvider);

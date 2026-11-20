@@ -29,6 +29,7 @@
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg_harness.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/ffmpeg_rules.h"
 #include "sources/graph_supplier.h"
@@ -291,6 +292,21 @@ TEST_SUITE("ffmpeg") {
                    "take no query");
         checkError(openError(harness, "lavfi:sine"), dvv::Errc::Unsupported,
                    "lavfi: filter sine is not supported");
+        // The source's index check: the texts with and without a frame count.
+        const dvv::Result<void> below = dvv::components::detail::checkFrameIndex(-1, std::nullopt);
+        CHECK_FALSE(below.has_value());
+        if (!below) {
+            CHECK(below.error().code == dvv::Errc::Internal);
+            CHECK(below.error().message == "frame -1 is outside [0, unbounded)");
+        }
+        const dvv::Result<void> past = dvv::components::detail::checkFrameIndex(3, 3);
+        CHECK_FALSE(past.has_value());
+        if (!past) {
+            CHECK(past.error().code == dvv::Errc::Internal);
+            CHECK(past.error().message == "frame 3 is outside [0, 3)");
+        }
+        CHECK(dvv::components::detail::checkFrameIndex(0, std::nullopt).has_value());
+        CHECK(dvv::components::detail::checkFrameIndex(2, 3).has_value());
     }
 
     TEST_CASE("lavfi: destroying the source with queued requests stops it") {
