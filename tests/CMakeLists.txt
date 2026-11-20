@@ -129,8 +129,8 @@ set_tests_properties(dvv_components.lavfi_fixtures PROPERTIES
     LABELS ffmpeg
     TIMEOUT 900)
 # The environment of every FFmpeg entry, read once by the loop below: append to it before the loop
-# (or later with set_property(TEST <name> APPEND PROPERTY ENVIRONMENT_MODIFICATION ...)). It does not
-# hold DVV_FFMPEG_DIR: an entry that needs FFmpeg loaded adds
+# (or later with set_property(TEST <name> APPEND PROPERTY ENVIRONMENT_MODIFICATION ...)). It does
+# not hold DVV_FFMPEG_DIR: an entry that needs FFmpeg loaded adds
 # "DVV_FFMPEG_DIR=set:${DVV_FFMPEG_RUNTIME_DIR}" itself, as the "available" mode does.
 set(ffmpeg_test_environment ${DVV_TEST_ENVIRONMENT}
     "DVV_TEST_FFMPEG_RUNTIME_DIR=set:${DVV_FFMPEG_RUNTIME_DIR}"
@@ -233,8 +233,8 @@ add_test(NAME dvv_components.no_ffmpeg_imports_selftest
                  -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/import-check-selftest
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/run-import-check-selftest.cmake)
 
-# dvv_add_component() and dvv_link_enabled_components() at the CMake level: options, recorded ids and
-# errors, in configure-only runs of a stub project.
+# dvv_add_component() and dvv_link_enabled_components() at the CMake level: options, recorded ids
+# and errors, in configure-only runs of a stub project.
 add_test(NAME dvv_components.cmake_functions
          COMMAND ${CMAKE_COMMAND}
                  -DPROJECT_DIR=${CMAKE_CURRENT_SOURCE_DIR}/cmake/option-project

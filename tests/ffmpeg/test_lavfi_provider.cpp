@@ -442,7 +442,9 @@ TEST_SUITE("ffmpeg") {
             dvv::components::testing::fixture("lossless_huffyuv.avi");
         std::string rel =
             dvv::pathText(std::filesystem::relative(clip, std::filesystem::current_path()));
+#if defined(_WIN32)
         std::ranges::replace(rel, '\\', '/');
+#endif
         REQUIRE_FALSE(rel.empty());
         REQUIRE(rel.find(':') == std::string::npos);
         // Not on the allowlist (security review): file and URL sources, a QR source and drawtext

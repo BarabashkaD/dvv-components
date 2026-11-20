@@ -1,5 +1,6 @@
-# Stub project for run-component-option-test.cmake: dvv_add_component() and dvv_link_enabled_components()
-# without the dvv libraries (dvv::media and the compiler options are stubs).
+# Stub project for run-component-option-test.cmake: dvv_add_component() and
+# dvv_link_enabled_components() without the dvv libraries (dvv::media and the compiler options
+# are stubs).
 cmake_minimum_required(VERSION 4.2)
 project(dvv_component_option_test LANGUAGES CXX)
 add_library(dvv::media INTERFACE IMPORTED)
