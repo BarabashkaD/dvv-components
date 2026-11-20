@@ -233,6 +233,15 @@ TEST_SUITE("ffmpeg") {
         CHECK(*again == first);
     }
 
+    TEST_CASE("lavfi: a graph source fixes format, size and rate") {
+        FfmpegHarness harness;
+        const auto source = harness.open("lavfi:testsrc2=s=64x48:r=25");
+        CHECK(source);
+        if (source) {
+            CHECK(source->info().fixed == media::FixedFields::all());
+        }
+    }
+
     TEST_CASE("lavfi: colour from frame 0") {
         FfmpegHarness harness;
         const auto source = harness.open(

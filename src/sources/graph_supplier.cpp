@@ -312,6 +312,7 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     media::SourceInfo& info = opened.info;
     info.desc = desc;
     info.fps = fps;
+    info.fixed = media::FixedFields::all();
     info.frameCount = std::nullopt;
     info.access = media::SourceAccess::Sequential;
     info.deterministic = lavfiDeterministic(graph);  // gradients and random colours are not (D6)

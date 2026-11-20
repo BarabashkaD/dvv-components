@@ -261,6 +261,15 @@ TEST_SUITE("ffmpeg") {
         checkFrames(harness, source, SEQ, hashes, order);
     }
 
+    TEST_CASE("ffmpeg: a container source fixes format, size and rate") {
+        FfmpegHarness harness;
+        const auto source = harness.open(fixtureUri(SEQ));
+        CHECK(source);
+        if (source) {
+            CHECK(source->info().fixed == media::FixedFields::all());
+        }
+    }
+
     TEST_CASE("ffmpeg: seek and flush on the indexed path") {
         FfmpegHarness harness;
         const auto hashes = referenceHashes("ffv1_yuv420p.framemd5");

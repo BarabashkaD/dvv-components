@@ -649,6 +649,7 @@ Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, Contain
     media::SourceInfo& info = opened.info;
     info.desc = desc;
     info.fps = fps;
+    info.fixed = media::FixedFields::all();
     info.frameCount = supplier->frameCount();
     info.access = supplier->sequential() ? media::SourceAccess::Sequential
                                          : media::SourceAccess::RandomCostly;
