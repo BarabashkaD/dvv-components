@@ -91,28 +91,28 @@ TEST_CASE("refusalReason: a GPL or nonfree build is refused") {
         auto libraries = facts();
         library(libraries, "swscale").licence = "GPL version 2 or later";
         CHECK(refusalReason(libraries) ==
-              "is a GPL build (swscale: GPL version 2 or later); rawreel uses only LGPL builds");
+              "is a GPL build (swscale: GPL version 2 or later); only LGPL builds are accepted");
     }
     {
         auto libraries = facts();
         library(libraries, "avcodec").licence = "nonfree and unredistributable";
         CHECK(refusalReason(libraries) ==
               "is not an LGPL build (avcodec: nonfree and "
-              "unredistributable); rawreel uses only LGPL builds");
+              "unredistributable); only LGPL builds are accepted");
     }
     {
         auto libraries = facts();
         library(libraries, "avformat").configuration = "--enable-shared --enable-gpl";
         CHECK(refusalReason(libraries) ==
               "is a GPL build (avformat configured with --enable-gpl); "
-              "rawreel uses only LGPL builds");
+              "only LGPL builds are accepted");
     }
     {
         auto libraries = facts();
         library(libraries, "avfilter").configuration = "--enable-nonfree";
         CHECK(refusalReason(libraries) ==
-              "is a nonfree build (avfilter configured with --enable-nonfree); rawreel uses only "
-              "LGPL builds");
+              "is a nonfree build (avfilter configured with --enable-nonfree); only LGPL builds "
+              "are accepted");
     }
 }
 
@@ -121,12 +121,13 @@ TEST_CASE("refusalReason: versions must match the headers") {
     LibraryInfo& avformat = library(libraries, "avformat");
     avformat.compiledVersion = v(62, 3, 100);
     avformat.runtimeVersion = v(61, 3, 100);
-    CHECK(refusalReason(libraries) ==
-          "has avformat 61.3.100, but rawreel was built for 62.3.100 (the major version must "
-          "match)");
+    CHECK(
+        refusalReason(libraries) ==
+        "has avformat 61.3.100, but dvv-components was built for 62.3.100 (the major version must "
+        "match)");
     avformat.runtimeVersion = v(62, 2, 100);
     CHECK(refusalReason(libraries) ==
-          "has avformat 62.2.100, older than the 62.3.100 rawreel was built for");
+          "has avformat 62.2.100, older than the 62.3.100 dvv-components was built for");
     avformat.runtimeVersion = v(62, 4, 0);
     CHECK(refusalReason(libraries) == std::nullopt);
     avformat.runtimeVersion = v(62, 3, 99);
@@ -138,7 +139,7 @@ TEST_CASE("refusalReason: the first problem in order is reported") {
     library(libraries, "avutil").runtimeVersion = v(60, 7, 100);
     library(libraries, "swscale").licence = "GPL version 2 or later";
     CHECK(refusalReason(libraries) ==
-          "has avutil 60.7.100, older than the 60.8.100 rawreel was built for");
+          "has avutil 60.7.100, older than the 60.8.100 dvv-components was built for");
 }
 
 TEST_CASE("planSearch: explicit directories are final and must be absolute") {

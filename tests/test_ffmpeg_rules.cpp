@@ -242,9 +242,7 @@ TEST_SUITE("ffmpeg_rules") {
     TEST_CASE("ffmpeg rules: the PAL/NTSC hint and non-standard tags") {
         using media::Bt601Hint;
         const auto hint = [](AVColorSpace space, AVColorPrimaries primaries) {
-            return detail::mapColour(space, AVCOL_RANGE_UNSPECIFIED, AVCOL_TRC_UNSPECIFIED,
-                                     primaries)
-                .hint;
+            return detail::mapColour({.space = space, .primaries = primaries}).hint;
         };
         const auto bt601 = [&](AVColorSpace space, AVColorPrimaries primaries) {
             return hint(space, primaries).bt601;
@@ -264,7 +262,7 @@ TEST_SUITE("ffmpeg_rules") {
 
         const auto non_standard = [](AVColorSpace space, AVColorTransferCharacteristic transfer,
                                      AVColorPrimaries primaries) {
-            return detail::mapColour(space, AVCOL_RANGE_UNSPECIFIED, transfer, primaries)
+            return detail::mapColour({.space = space, .transfer = transfer, .primaries = primaries})
                 .hint.nonStandard;
         };
         for (const int code : {4, 8, 10, 11, 12, 22}) {
@@ -305,10 +303,7 @@ TEST_SUITE("ffmpeg_rules") {
         using media::ColourMatrix;
         using media::ColourModel;
         using media::Primaries;
-        const media::ColourParams ntsc =
-            detail::mapColour(AVCOL_SPC_SMPTE170M, AVCOL_RANGE_UNSPECIFIED, AVCOL_TRC_UNSPECIFIED,
-                              AVCOL_PRI_UNSPECIFIED)
-                .params;
+        const media::ColourParams ntsc = detail::mapColour({.space = AVCOL_SPC_SMPTE170M}).params;
         CHECK(detail::withBt601Hint(ntsc, Bt601Hint::Ntsc, ColourModel::Yuv).primaries ==
               Primaries::Bt601_525);
         CHECK(detail::withBt601Hint(ntsc, Bt601Hint::Pal, ColourModel::Yuv).primaries ==
@@ -329,24 +324,16 @@ TEST_SUITE("ffmpeg_rules") {
 
     TEST_CASE("ffmpeg rules: colour mapping table") {
         const auto matrix = [](AVColorSpace space) {
-            return detail::mapColour(space, AVCOL_RANGE_UNSPECIFIED, AVCOL_TRC_UNSPECIFIED,
-                                     AVCOL_PRI_UNSPECIFIED)
-                .params.matrix;
+            return detail::mapColour({.space = space}).params.matrix;
         };
         const auto range = [](AVColorRange value) {
-            return detail::mapColour(AVCOL_SPC_UNSPECIFIED, value, AVCOL_TRC_UNSPECIFIED,
-                                     AVCOL_PRI_UNSPECIFIED)
-                .params.range;
+            return detail::mapColour({.range = value}).params.range;
         };
         const auto transfer = [](AVColorTransferCharacteristic value) {
-            return detail::mapColour(AVCOL_SPC_UNSPECIFIED, AVCOL_RANGE_UNSPECIFIED, value,
-                                     AVCOL_PRI_UNSPECIFIED)
-                .params.transfer;
+            return detail::mapColour({.transfer = value}).params.transfer;
         };
         const auto primaries = [](AVColorPrimaries value) {
-            return detail::mapColour(AVCOL_SPC_UNSPECIFIED, AVCOL_RANGE_UNSPECIFIED,
-                                     AVCOL_TRC_UNSPECIFIED, value)
-                .params.primaries;
+            return detail::mapColour({.primaries = value}).params.primaries;
         };
         using media::ColourMatrix;
         using media::ColourRange;
@@ -379,9 +366,11 @@ TEST_SUITE("ffmpeg_rules") {
         CHECK(transfer(AVCOL_TRC_SMPTE240M) == TransferFn::Unspecified);
         CHECK(primaries(AVCOL_PRI_SMPTE240M) == Primaries::Bt601_525);
         CHECK(primaries(AVCOL_PRI_BT470M) == Primaries::Unspecified);
-        const media::ColourParams all =
-            detail::mapColour(AVCOL_SPC_BT709, AVCOL_RANGE_MPEG, AVCOL_TRC_BT709, AVCOL_PRI_BT709)
-                .params;
+        const media::ColourParams all = detail::mapColour({.space = AVCOL_SPC_BT709,
+                                                           .range = AVCOL_RANGE_MPEG,
+                                                           .transfer = AVCOL_TRC_BT709,
+                                                           .primaries = AVCOL_PRI_BT709})
+                                            .params;
         CHECK(all == colour(ColourMatrix::Bt709, ColourRange::Limited, TransferFn::Bt1886,
                             Primaries::Bt709));
     }

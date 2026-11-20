@@ -117,6 +117,9 @@ Result<media::FrameRef> copyAndPublish(const AVFrame& frame, const media::FrameD
     DVV_TRY(const std::shared_ptr<media::HostFrame> host,
             ctx.allocateHost(desc, layout.bytes, HOST_ALIGNMENT, 0));
     const std::span<std::byte> out = host->data();
+    // Copied, not wrapped: the decoder's planes may be padded (linesize above the row size) or
+    // bottom-up (negative linesize), and a catalogue original has the tight geometry. One copy per
+    // frame, at the source boundary.
     for (std::size_t p = 0; p < layout.planeCount; ++p) {
         const media::PlaneGeometry& plane = layout.planes[p];
         const auto* source = reinterpret_cast<const std::byte*>(frame.data[p]);

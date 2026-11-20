@@ -272,14 +272,14 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
     const auto width = static_cast<std::uint32_t>(first->width);
     const auto height = static_cast<std::uint32_t>(first->height);
     // The frame's tags with the PAL/NTSC hint applied (D5R Task 0); a non-standard set is logged.
-    const MappedColour mapped =
-        mapColour(first->colorspace, first->color_range, first->color_trc, first->color_primaries);
+    const ColourTags tags{.space = first->colorspace,
+                          .range = first->color_range,
+                          .transfer = first->color_trc,
+                          .primaries = first->color_primaries};
+    const MappedColour mapped = mapColour(tags);
     std::vector<std::string> notes;
     if (mapped.hint.nonStandard) {
-        notes.push_back(nonStandardNote(ColourTags{.space = first->colorspace,
-                                                   .range = first->color_range,
-                                                   .transfer = first->color_trc,
-                                                   .primaries = first->color_primaries}));
+        notes.push_back(nonStandardNote(tags));
     }
     media::ColourParams colour =
         withBt601Hint(mapped.params, mapped.hint.bt601, media::formatDesc(format->format).model);

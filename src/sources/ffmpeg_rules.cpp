@@ -178,44 +178,50 @@ Result<media::ColourParams> overrideColour(const media::ColourParams& mapped,
 
 namespace {
 
-// Unspecified and reserved codes (H.273: 0 is reserved for the primaries and the transfer, 3 for
-// all three) are not signalled.
-bool signalled(int code, int unspecified, bool zero_reserved) noexcept {
-    return code != unspecified && code != 3 && !(zero_reserved && code == 0);
+// Whether code 0 is reserved (H.273: for the primaries and the transfer) or a valid code (the
+// matrix: 0 is GBR).
+enum class ZeroCode : std::uint8_t { Reserved, Valid };
+
+// Unspecified and reserved codes (H.273: 3 is reserved for all three; 0 per `zero`) are not
+// signalled.
+bool signalled(int code, int unspecified, ZeroCode zero) noexcept {
+    return code != unspecified && code != 3 && !(zero == ZeroCode::Reserved && code == 0);
 }
 
 template <typename Code>
-Code firstSignalled(Code frame, Code stream, int unspecified, bool zero_reserved) noexcept {
-    return signalled(static_cast<int>(frame), unspecified, zero_reserved) ? frame : stream;
+Code firstSignalled(Code frame, Code stream, int unspecified, ZeroCode zero) noexcept {
+    return signalled(static_cast<int>(frame), unspecified, zero) ? frame : stream;
 }
 
 }  // namespace
 
 ColourTags mergeTags(const ColourTags& frame, const ColourTags& stream) noexcept {
     return ColourTags{
-        .space = firstSignalled(frame.space, stream.space, AVCOL_SPC_UNSPECIFIED, false),
+        .space = firstSignalled(frame.space, stream.space, AVCOL_SPC_UNSPECIFIED, ZeroCode::Valid),
         .range = frame.range != AVCOL_RANGE_UNSPECIFIED ? frame.range : stream.range,
-        .transfer = firstSignalled(frame.transfer, stream.transfer, AVCOL_TRC_UNSPECIFIED, true),
-        .primaries =
-            firstSignalled(frame.primaries, stream.primaries, AVCOL_PRI_UNSPECIFIED, true)};
+        .transfer = firstSignalled(frame.transfer, stream.transfer, AVCOL_TRC_UNSPECIFIED,
+                                   ZeroCode::Reserved),
+        .primaries = firstSignalled(frame.primaries, stream.primaries, AVCOL_PRI_UNSPECIFIED,
+                                    ZeroCode::Reserved)};
 }
 
 std::vector<std::string> tagConflicts(const ColourTags& frame, const ColourTags& stream) {
     std::vector<std::string> lines;
     const auto check = [&lines](std::string_view field, int frame_code, int stream_code,
-                                int unspecified, bool zero_reserved) {
-        if (signalled(frame_code, unspecified, zero_reserved) &&
-            signalled(stream_code, unspecified, zero_reserved) && frame_code != stream_code) {
+                                int unspecified, ZeroCode zero) {
+        if (signalled(frame_code, unspecified, zero) && signalled(stream_code, unspecified, zero) &&
+            frame_code != stream_code) {
             lines.push_back(
                 std::format("colour: the frame's {} {} differs from the stream's {} (the frame's "
                             "is used)",
                             field, frame_code, stream_code));
         }
     };
-    check("matrix", frame.space, stream.space, AVCOL_SPC_UNSPECIFIED, false);
-    check("range", frame.range, stream.range, AVCOL_RANGE_UNSPECIFIED, false);
-    check("transfer", frame.transfer, stream.transfer, AVCOL_TRC_UNSPECIFIED, true);
-    check("primaries", frame.primaries, stream.primaries, AVCOL_PRI_UNSPECIFIED, true);
+    check("matrix", frame.space, stream.space, AVCOL_SPC_UNSPECIFIED, ZeroCode::Valid);
+    check("range", frame.range, stream.range, AVCOL_RANGE_UNSPECIFIED, ZeroCode::Valid);
+    check("transfer", frame.transfer, stream.transfer, AVCOL_TRC_UNSPECIFIED, ZeroCode::Reserved);
+    check("primaries", frame.primaries, stream.primaries, AVCOL_PRI_UNSPECIFIED,
+          ZeroCode::Reserved);
     return lines;
 }
 
@@ -244,9 +250,8 @@ media::ColourParams withBt601Hint(media::ColourParams params, media::Bt601Hint h
     return params;
 }
 
-MappedColour mapColour(AVColorSpace space, AVColorRange range,
-                       AVColorTransferCharacteristic transfer,
-                       AVColorPrimaries primaries) noexcept {
+MappedColour mapColour(const ColourTags& tags) noexcept {
+    const auto [space, range, transfer, primaries] = tags;
     MappedColour mapped;
     media::ColourParams& colour = mapped.params;
     media::FileHint& hint = mapped.hint;

@@ -583,7 +583,7 @@ Result<OpenedContainer> openContainer(const Uri& uri) {
                                  .primaries = parameters.color_primaries};
     const ColourTags tags = mergeTags(frame_tags, stream_tags);
     std::vector<std::string> notes = tagConflicts(frame_tags, stream_tags);
-    const MappedColour mapped = mapColour(tags.space, tags.range, tags.transfer, tags.primaries);
+    const MappedColour mapped = mapColour(tags);
     if (mapped.hint.nonStandard) {
         notes.push_back(nonStandardNote(tags));
     }

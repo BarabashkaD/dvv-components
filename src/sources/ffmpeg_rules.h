@@ -164,9 +164,7 @@ struct MappedColour {
 // hint.bt601: primaries 5 -> Pal, 6/7 -> Ntsc; with unspecified primaries the matrix code is the
 // weak hint (5 -> Pal, 6 -> Ntsc). hint.nonStandard ("signalled but non-standard", not
 // "unspecified"): primaries 4/8/10/11/12/22, transfer 7/9/10/11/12/17, matrix 4/7/8/10 and above.
-[[nodiscard]] MappedColour mapColour(AVColorSpace space, AVColorRange range,
-                                     AVColorTransferCharacteristic transfer,
-                                     AVColorPrimaries primaries) noexcept;
+[[nodiscard]] MappedColour mapColour(const ColourTags& tags) noexcept;
 // The hint applied to the fields, because dvv-media's resolveColour() gets only the FrameDesc:
 // on a YUV model with the BT.601 matrix and unspecified primaries, hint.bt601 fills the primaries
 // (Pal -> Bt601_625, Ntsc -> Bt601_525), so standardOf() names the same BT.601 standard. Anything

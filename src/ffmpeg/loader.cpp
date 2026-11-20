@@ -245,7 +245,7 @@ Located locate(const FfmpegLoadOptions& options) {
             .error = std::format("FFmpeg not found (looked in {}; {})", looked, HINT)};
 }
 
-// Behaviour of Task 4: plan, directory, open, resolve, facts, refusal, success.
+// Behaviour of Task 4: plan, directory, open, resolve, library info, refusal, success.
 void load(LoaderState& state, const FfmpegLoadOptions& options) {
     FfmpegStatus& status = state.status;
     status = {};  // a retry after a throwing attempt (call_once runs again) starts clean
@@ -374,11 +374,12 @@ std::optional<std::string> averrorText(int averror) {
     if (!state.loaded.load(std::memory_order_acquire)) {
         return std::nullopt;
     }
-    std::array<char, AV_ERROR_MAX_STRING_SIZE> text{};
-    if (state.api.av_strerror(averror, text.data(), text.size()) != 0 || text.front() == '\0') {
+    std::array<char, AV_ERROR_MAX_STRING_SIZE> buffer{};
+    if (state.api.av_strerror(averror, buffer.data(), buffer.size()) != 0 ||
+        buffer.front() == '\0') {
         return std::nullopt;
     }
-    return std::string(text.data());
+    return std::string(buffer.data());
 }
 }  // namespace ffmpeg
 

@@ -15,7 +15,7 @@
 namespace dvv::components::detail {
 namespace {
 
-constexpr std::string_view LGPL_ONLY = "rawreel uses only LGPL builds";
+constexpr std::string_view LGPL_ONLY = "only LGPL builds are accepted";
 
 unsigned majorOf(unsigned packed) noexcept {
     return packed >> 16;
@@ -26,13 +26,14 @@ unsigned minorOf(unsigned packed) noexcept {
 
 std::optional<std::string> libraryProblem(const LibraryInfo& library) {
     if (majorOf(library.runtimeVersion) != majorOf(library.compiledVersion)) {
-        return std::format("has {} {}, but rawreel was built for {} (the major version must match)",
-                           library.name, versionText(library.runtimeVersion),
-                           versionText(library.compiledVersion));
+        return std::format(
+            "has {} {}, but dvv-components was built for {} (the major version must match)",
+            library.name, versionText(library.runtimeVersion),
+            versionText(library.compiledVersion));
     }
     if (minorOf(library.runtimeVersion) < minorOf(library.compiledVersion)) {
-        return std::format("has {} {}, older than the {} rawreel was built for", library.name,
-                           versionText(library.runtimeVersion),
+        return std::format("has {} {}, older than the {} dvv-components was built for",
+                           library.name, versionText(library.runtimeVersion),
                            versionText(library.compiledVersion));
     }
     if (!library.licence.starts_with("LGPL")) {
