@@ -1,14 +1,14 @@
-// The `lavfi` provider's filter graph (design v2 D6, §4.4 lavfi, §5.4; v1.0 codec scope).
+// The `lavfi` provider's filter graph.
 
 #include "sources/graph_supplier.h"
 
-#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,9 +17,11 @@
 #include "dvv/base/error.h"
 #include "dvv/base/uri.h"
 #include "dvv/media/pixel_format.h"
+#include "dvv/media/rate_size_text.h"
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/ffmpeg_rules.h"
 #include "sources/frame_ring.h"
@@ -28,22 +30,8 @@ namespace dvv::components::detail {
 namespace {
 
 constexpr std::size_t OPEN_RING = 8;  // open step 2; resized in step 4
-constexpr media::Rational DEFAULT_FPS{25, 1};
 
 using ffmpeg::api;
-
-Error sourceClosed() {
-    return Error{.code = Errc::Internal, .message = "source closed", .where = {}, .cause = nullptr};
-}
-
-// av_strerror's text, or "AVERROR <n>" when it has none.
-std::string errorText(int averror) {
-    std::array<char, AV_ERROR_MAX_STRING_SIZE> text{};
-    if (api().av_strerror(averror, text.data(), text.size()) == 0 && text.front() != '\0') {
-        return text.data();
-    }
-    return std::format("AVERROR {}", averror);
-}
 
 // A parse or configure error of the graph: AVERROR(ENOMEM) -> OutOfMemory (ffmpegError of the
 // call); any other -> Format "the lavfi graph is invalid: <text> (AVERROR <n>)" (plan choice: a
@@ -52,11 +40,13 @@ Error graphError(std::string_view call, int averror) {
     if (averror == AVERROR(ENOMEM)) {
         return ffmpeg::ffmpegError(call, averror);
     }
-    return Error{.code = Errc::Format,
-                 .message = std::format("the lavfi graph is invalid: {} (AVERROR {})",
-                                        errorText(averror), averror),
-                 .where = {},
-                 .cause = nullptr};
+    return Error{
+        .code = Errc::Format,
+        .message = std::format(
+            "the lavfi graph is invalid: {} (AVERROR {})",
+            ffmpeg::averrorText(averror).value_or(std::format("AVERROR {}", averror)), averror),
+        .where = {},
+        .cause = nullptr};
 }
 
 Error graphEnded(std::int64_t produced) {
@@ -166,9 +156,8 @@ Result<void> GraphSupplier::build() {
     return {};
 }
 
-Result<const AVFrame*> GraphSupplier::first() {
-    const StopCheck never{.flag = nullptr, .generation = ffmpeg::stopGeneration()};
-    if (auto pulled = pull(never); !pulled) {
+Result<const AVFrame*> GraphSupplier::first(const StopCheck& stopped) {
+    if (auto pulled = pull(stopped); !pulled) {
         if (ended_) {
             return makeError(Errc::Format, "the lavfi graph produced no frame");
         }
@@ -200,7 +189,7 @@ void GraphSupplier::resizeRing(std::size_t capacity) {
 
 Result<void> GraphSupplier::pull(const StopCheck& stopped) {
     if (stopped()) {
-        return std::unexpected(sourceClosed());
+        return std::unexpected(stopped.error());
     }
     if (ended_) {
         return std::unexpected(graphEnded(produced_));
@@ -248,9 +237,9 @@ Result<const AVFrame*> GraphSupplier::frame(std::int64_t index, const StopCheck&
 
 // ---- open steps 1-5 ----
 
-Result<OpenedGraph> openGraph(const Uri& uri) {
+Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     // 1. The graph is the URI's body exactly as given (lavfi: is an opaque scheme, so parseUri
-    // keeps it whole); a '?' would start a query, which lavfi: URIs do not take (D28).
+    // keeps it whole); a '?' would start a query, which lavfi: URIs do not take.
     const std::string& graph = uri.body;
     if (graph.empty()) {
         return makeError(Errc::Format, "lavfi: URI without a graph");
@@ -259,12 +248,17 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
         return makeError(Errc::Format,
                          "lavfi: URIs take no query (the rest of the URI is the graph)");
     }
-    // One stop generation for the open and the worker (as the ffmpeg provider).
+    // One stop generation for the open and the worker (as the ffmpeg provider); the open's token
+    // bounds the pull of frame 0.
     const std::uint64_t generation = ffmpeg::stopGeneration();
+    const StopCheck opening{.flag = nullptr, .generation = generation, .token = std::move(stop)};
 
     // 2. Build and frame 0.
     DVV_TRY(std::unique_ptr<GraphSupplier> supplier, GraphSupplier::create(graph, OPEN_RING));
-    DVV_TRY(const AVFrame* const first, supplier->first());
+    DVV_TRY(const AVFrame* const first, supplier->first(opening));
+    if (opening()) {
+        return std::unexpected(opening.error());
+    }
 
     // 3. Frame 0 decides the format, the size and the colour; the sink the frame rate.
     const int av_format = first->format;
@@ -279,18 +273,18 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
     }
     const auto width = static_cast<std::uint32_t>(first->width);
     const auto height = static_cast<std::uint32_t>(first->height);
-    // The frame's tags with the PAL/NTSC hint applied (D5R Task 0); a non-standard set is logged.
-    const MappedColour mapped =
-        mapColour(first->colorspace, first->color_range, first->color_trc, first->color_primaries);
+    // The frame's tags with the PAL/NTSC hint applied; a non-standard set is logged.
+    const ColourTags tags{.space = first->colorspace,
+                          .range = first->color_range,
+                          .transfer = first->color_trc,
+                          .primaries = first->color_primaries};
+    const MappedColour mapped = mapColour(tags);
     std::vector<std::string> notes;
     if (mapped.hint.nonStandard) {
-        notes.push_back(nonStandardNote(ColourTags{.space = first->colorspace,
-                                                   .range = first->color_range,
-                                                   .transfer = first->color_trc,
-                                                   .primaries = first->color_primaries}));
+        notes.push_back(nonStandardNote(tags));
     }
     media::ColourParams colour =
-        withBt601Hint(mapped.params, mapped.hint.bt601, media::descriptor(format->format).model);
+        withBt601Hint(mapped.params, mapped.hint.bt601, media::formatDesc(format->format).model);
     if (format->fullRange && colour.range == media::ColourRange::Unspecified) {
         colour.range = media::ColourRange::Full;
     }
@@ -304,27 +298,29 @@ Result<OpenedGraph> openGraph(const Uri& uri) {
     const AVRational rate = supplier->frameRate();
     media::Rational fps = reduced({rate.num, rate.den});
     if (fps.num <= 0 || fps.den <= 0) {
-        fps = DEFAULT_FPS;
-        warnings.emplace_back("frame rate unknown, 25 fps assumed");
+        fps = media::FALLBACK_FPS;
+        warnings.push_back(std::format("frame rate unknown, {} fps assumed",
+                                       media::formatFps(media::FALLBACK_FPS)));
     }
 
-    // 4. Every later frame is checked against frame 0; the ring gets its D5 size (frame 0 stays).
+    // 4. Every later frame is checked against frame 0; the ring gets its size (frame 0 stays).
     supplier->setExpected(desc, av_format);
     supplier->resizeRing(ringCapacity(layout.bytes));
 
     // 5. The source's info and its worker (the thread starts here).
-    OpenedGraph opened;
+    OpenedSource opened;
     media::SourceInfo& info = opened.info;
     info.desc = desc;
     info.fps = fps;
+    info.fixed = media::FixedFields::all();
     info.frameCount = std::nullopt;
     info.access = media::SourceAccess::Sequential;
-    info.deterministic = lavfiDeterministic(graph);  // gradients and random colours are not (D6)
+    info.deterministic = lavfiDeterministic(graph);  // gradients and random colours are not
     info.resolvedUri = "lavfi:" + graph;
     info.provider = "lavfi";
     info.warnings = std::move(warnings);
     info.notes = std::move(notes);
-    // The hint from frame 0's tags, for the labels (D5R F1).
+    // The hint from frame 0's tags, for the labels.
     info.colourHint = mapped.hint;
     info.reader = "lavfi";  // no file is read (no file read mode applies)
     opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc, generation);
@@ -335,7 +331,7 @@ Result<std::unique_ptr<AvWorker>> makeGraphWorkerForTest(std::string graph) {
     Uri uri;
     uri.scheme = "lavfi";
     uri.body = std::move(graph);
-    DVV_TRY(OpenedGraph opened, openGraph(uri));
+    DVV_TRY(OpenedSource opened, openGraph(uri, std::stop_token{}));
     return std::move(opened.worker);
 }
 

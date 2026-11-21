@@ -1,4 +1,4 @@
-// Pure parts of the FFmpeg loader (M4 design D3): the library checks and the search plan.
+// Pure parts of the FFmpeg loader: the library checks and the search plan.
 
 #include <filesystem>
 #include <format>
@@ -8,14 +8,14 @@
 #include <string_view>
 #include <utility>
 
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/media/types.h"
 #include "ffmpeg/loader_detail.h"
 
 namespace dvv::components::detail {
 namespace {
 
-constexpr std::string_view LGPL_ONLY = "rawreel uses only LGPL builds";
+constexpr std::string_view LGPL_ONLY = "only LGPL builds are accepted";
 
 unsigned majorOf(unsigned packed) noexcept {
     return packed >> 16;
@@ -24,15 +24,16 @@ unsigned minorOf(unsigned packed) noexcept {
     return (packed >> 8) & 0xffU;
 }
 
-std::optional<std::string> libraryProblem(const LibraryFacts& library) {
+std::optional<std::string> libraryProblem(const LibraryInfo& library) {
     if (majorOf(library.runtimeVersion) != majorOf(library.compiledVersion)) {
-        return std::format("has {} {}, but rawreel was built for {} (the major version must match)",
-                           library.name, versionText(library.runtimeVersion),
-                           versionText(library.compiledVersion));
+        return std::format(
+            "has {} {}, but dvv-components was built for {} (the major version must match)",
+            library.name, versionText(library.runtimeVersion),
+            versionText(library.compiledVersion));
     }
     if (minorOf(library.runtimeVersion) < minorOf(library.compiledVersion)) {
-        return std::format("has {} {}, older than the {} rawreel was built for", library.name,
-                           versionText(library.runtimeVersion),
+        return std::format("has {} {}, older than the {} dvv-components was built for",
+                           library.name, versionText(library.runtimeVersion),
                            versionText(library.compiledVersion));
     }
     if (!library.licence.starts_with("LGPL")) {
@@ -56,11 +57,11 @@ std::optional<std::string> libraryProblem(const LibraryFacts& library) {
 
 }  // namespace
 
-std::optional<std::string> refusalReason(std::span<const LibraryFacts> libraries) {
+std::optional<std::string> refusalReason(std::span<const LibraryInfo> libraries) {
     if (libraries.empty()) {
         return "has no libraries to check";
     }
-    for (const LibraryFacts& library : libraries) {
+    for (const LibraryInfo& library : libraries) {
         if (auto problem = libraryProblem(library)) {
             return problem;
         }
@@ -76,7 +77,7 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
         plan.source = SearchSource::Options;
         if (!options.directory->is_absolute()) {
             plan.error = std::format("the FFmpeg directory must be absolute (got '{}')",
-                                     media::utf8FromPath(*options.directory));
+                                     pathDisplayText(*options.directory));
             return plan;
         }
         plan.directories.push_back(*options.directory);
@@ -84,9 +85,10 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
     }
     if (environment && !environment->empty()) {
         plan.source = SearchSource::Environment;
-        std::filesystem::path directory = media::pathFromUtf8(*environment);
+        std::filesystem::path directory = pathFromText(*environment);
         if (!directory.is_absolute()) {
-            plan.error = std::format("DVV_FFMPEG_DIR must be absolute (got '{}')", *environment);
+            plan.error = std::format("DVV_FFMPEG_DIR must be absolute (got '{}')",
+                                     pathDisplayText(directory));
             return plan;
         }
         plan.directories.push_back(std::move(directory));
@@ -96,6 +98,7 @@ SearchPlan planSearch(const FfmpegLoadOptions& options,
     if (!exe_dir.empty()) {
         plan.directories.push_back((exe_dir / "ffmpeg").lexically_normal());
         plan.directories.push_back((exe_dir / ".." / "lib" / "ffmpeg").lexically_normal());
+        // An app bundle keeps its libraries in Contents/Frameworks.
 #if defined(__APPLE__)
         plan.directories.push_back((exe_dir / ".." / "Frameworks" / "ffmpeg").lexically_normal());
 #endif
@@ -110,16 +113,6 @@ std::string_view sourceName(SearchSource source) noexcept {
         case SearchSource::Default: break;
     }
     return "default search";
-}
-
-std::string libraryFileName(std::string_view library, unsigned major) {
-#if defined(_WIN32)
-    return std::format("{}-{}.dll", library, major);
-#elif defined(__APPLE__)
-    return std::format("lib{}.{}.dylib", library, major);
-#else
-    return std::format("lib{}.so.{}", library, major);
-#endif
 }
 
 std::string versionText(unsigned packed) {

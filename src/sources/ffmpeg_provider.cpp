@@ -1,12 +1,11 @@
-// The `ffmpeg` source provider (design v2 §4.4, §5.1; v1.0 codec scope): files of any container
-// FFmpeg demuxes, lossless video codecs only, through FFmpeg loaded at run time (D3).
+// The `ffmpeg` source provider: files of any container FFmpeg demuxes, lossless video codecs
+// only, through FFmpeg loaded at run time.
 
 #include "sources/ffmpeg_provider.h"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <expected>
 #include <format>
 #include <memory>
@@ -22,9 +21,8 @@
 #include "dvv/media/source.h"
 #include "dvv/media/source_factory.h"
 #include "dvv/registry/component_registry.h"
-#include "dvv/registry/parameters.h"
 #include "ffmpeg/api.h"
-#include "sources/av_worker.h"
+#include "sources/av_source.h"
 #include "sources/container_supplier.h"
 #include "sources/ffmpeg_rules.h"
 
@@ -35,14 +33,8 @@ constexpr std::array<std::string_view, 1> SCHEMES{"file"};
 
 }  // namespace
 
-FfmpegSourceProvider::FfmpegSourceProvider(CreationKey<ComponentRegistry> key,
-                                           const ParameterValues& /*values*/) noexcept
+FfmpegSourceProvider::FfmpegSourceProvider(CreationKey<ComponentRegistry> key) noexcept
     : Managed(std::move(key)) {}
-
-const ParameterSchema& FfmpegSourceProvider::schema() {
-    static const ParameterSchema SCHEMA;
-    return SCHEMA;
-}
 
 std::span<const std::string_view> FfmpegSourceProvider::schemes() const noexcept {
     return SCHEMES;
@@ -85,27 +77,8 @@ media::Match FfmpegSourceProvider::match(const media::SourceRequest& request,
 Task<Result<std::unique_ptr<media::ISource>>> FfmpegSourceProvider::open(
     media::OpenTicket ticket, const media::SourceRequest& request,
     const media::FormatGuess& /*guess*/, const media::OpenContext& context) {
-    co_await resumeOn(context.io);  // all FFmpeg work of open runs on the I/O pool (§5.1)
-    detail::OpenedContainer opened = co_try(detail::openContainer(request.uri));
-    std::unique_ptr<media::ISource> source = std::make_unique<FfmpegSource>(
-        media::SourceFactory::issueKey<FfmpegSource>(std::move(ticket)), std::move(opened.info),
-        std::move(opened.worker));
-    co_return std::move(source);
-}
-
-FfmpegSource::FfmpegSource(CreationKey<media::SourceFactory> key, media::SourceInfo info,
-                           std::unique_ptr<detail::AvWorker> worker) noexcept
-    : Managed(std::move(key)), info_(std::move(info)), worker_(std::move(worker)) {}
-
-Task<Result<media::FrameRef>> FfmpegSource::produce(std::int64_t index,
-                                                    media::ProduceContext& ctx) {
-    const std::int64_t frames = info_.frameCount.value_or(0);
-    if (index < 0 || index >= frames) {
-        co_return makeError(Errc::Internal,
-                            std::format("frame {} is outside [0, {})", index, frames));
-    }
-    // Concurrent calls (the store's prefetch) queue on the worker (§5.4).
-    co_return co_await worker_->produce(index, ctx);
+    co_return co_await detail::openAvSource(std::move(ticket), request.uri, context.io,
+                                            context.stop, &detail::openContainer);
 }
 
 DVV_REGISTER(media::ISourceProvider, FfmpegSourceProvider);

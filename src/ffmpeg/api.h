@@ -1,13 +1,15 @@
 #pragma once
 
-// The FFmpeg function table of dvv_ffmpeg (M4 design D3, §4.4): every FFmpeg function
+// The FFmpeg function table of dvv_ffmpeg: every FFmpeg function
 // dvv-components calls, resolved at load time from the six libraries; RAII handles; the AVERROR
-// mapping (§7). Internal to dvv-components; never installed.
+// mapping. Internal to dvv-components; never installed.
 
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <source_location>
+#include <string>
 #include <string_view>
 
 #include "dvv/base/error.h"
@@ -110,7 +112,11 @@ struct Api {
 // callers exist only where the capability does (a provider's probe requires it).
 [[nodiscard]] const Api& api();
 
-// The process-wide stop generation (design v2 D5, §5.4): read with acquire; stopFfmpegSources()
+// av_strerror's text for `averror`. Nullopt when FFmpeg is not loaded or av_strerror has no text.
+// Does not throw.
+[[nodiscard]] std::optional<std::string> averrorText(int averror);
+
+// The process-wide stop generation: read with acquire; stopFfmpegSources()
 // increments it with release. A source worker remembers the value it was created with and ends its
 // work once the value differs.
 [[nodiscard]] std::uint64_t stopGeneration() noexcept;
@@ -160,7 +166,7 @@ using FilterGraphPtr = std::unique_ptr<AVFilterGraph, FilterGraphDeleter>;
 using FilterInOutPtr = std::unique_ptr<AVFilterInOut, FilterInOutDeleter>;
 using DictionaryPtr = std::unique_ptr<AVDictionary, DictionaryDeleter>;
 
-// M4 design §7: AVERROR(ENOMEM) -> OutOfMemory; AVERROR(ENOENT, EIO, EACCES, EPERM, EISDIR,
+// AVERROR(ENOMEM) -> OutOfMemory; AVERROR(ENOENT, EIO, EACCES, EPERM, EISDIR,
 // ENOTDIR, ENXIO, ENODEV, EROFS, ENOSPC, EFBIG, ENAMETOOLONG, EMFILE) -> Io; AVERROR_INVALIDDATA ->
 // Format; AVERROR_DECODER_NOT_FOUND, AVERROR_DEMUXER_NOT_FOUND, AVERROR_STREAM_NOT_FOUND,
 // AVERROR_PATCHWELCOME, AVERROR(ENOSYS) -> Unsupported; anything else -> Internal.

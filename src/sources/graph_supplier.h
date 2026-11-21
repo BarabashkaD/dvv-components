@@ -1,12 +1,13 @@
 #pragma once
 
-// The `lavfi` provider's filter graph (design v2 D6, §4.4 lavfi, §5.4): build, pull, restart and
+// The `lavfi` provider's filter graph: build, pull, restart and
 // end of one libavfilter graph whose single video output ends in a buffersink.
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 
 #include "dvv/base/error.h"
@@ -14,12 +15,13 @@
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/frame_ring.h"
 
 namespace dvv::components::detail {
 
-// One lavfi graph (design v2 D6, §4.4 lavfi). Built on open and on every restart; used only on the
+// One lavfi graph. Built on open and on every restart; used only on the
 // source's worker after open. Frames are numbered 0, 1, 2… in pull order since the last build.
 class GraphSupplier final : public IFrameSupplier {
 public:
@@ -39,8 +41,9 @@ public:
     GraphSupplier& operator=(GraphSupplier&&) = delete;
 
     // Pulls frame 0 (open only, before setExpected): its size, format and colour. The frame stays
-    // in the ring as index 0. Errc::Format "the lavfi graph produced no frame" at an immediate end.
-    [[nodiscard]] Result<const AVFrame*> first();
+    // in the ring as index 0. Errc::Format "the lavfi graph produced no frame" at an immediate end;
+    // `stopped.error()` when `stopped` is true before the pull (the open's check).
+    [[nodiscard]] Result<const AVFrame*> first(const StopCheck& stopped);
     [[nodiscard]] AVRational frameRate() const;  // av_buffersink_get_frame_rate
     // The descriptor and AVPixelFormat every later frame must match (checkFrame).
     void setExpected(const media::FrameDesc& desc, int av_format);
@@ -68,14 +71,11 @@ private:
     std::optional<int> expected_format_;  // nullopt until setExpected (first() checks nothing)
 };
 
-// The result of open steps 1-5 for one `lavfi` URI: the source's info and its worker (which owns
-// the supplier, with frame 0 in its ring).
-struct OpenedGraph {
-    media::SourceInfo info;
-    std::unique_ptr<AvWorker> worker;
-};
-// LavfiSourceProvider::open's work (it runs on the I/O pool).
-[[nodiscard]] Result<OpenedGraph> openGraph(const Uri& uri);
+// Open steps 1-5 for one `lavfi` URI, the `lavfi` provider's OpenSteps (it runs on the I/O pool):
+// the source's info and its worker (which owns the supplier, with frame 0 in its ring). `stop` ends
+// the open with Errc::Cancelled "source request cancelled" at the poll before the pull of frame 0,
+// or when it is stopped once frame 0 is pulled.
+[[nodiscard]] Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop);
 
 // Test seam (stop test): an AvWorker over GraphSupplier for `graph`, with the same open code.
 [[nodiscard]] Result<std::unique_ptr<AvWorker>> makeGraphWorkerForTest(std::string graph);

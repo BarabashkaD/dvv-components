@@ -1,8 +1,9 @@
-// The `lavfi` source provider against `ffmpeg -f lavfi … -f rawvideo` (M4 Task 5b; design v2 D6,
-// §4.4 lavfi, §5.4; v1.0 codec scope). Fixtures: tests/oracle/make-lavfi-fixtures.cmake.
+// The `lavfi` source provider against `ffmpeg -f lavfi … -f rawvideo`.
+// Fixtures: tests/oracle/make-lavfi-fixtures.cmake.
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -10,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -21,12 +23,15 @@
 #include "dvv/base/executors.h"
 #include "dvv/base/lifetime.h"
 #include "dvv/base/task.h"
+#include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/base/when_all.h"
 #include "dvv/media/frame_store.h"
 #include "dvv/media/pixel_format.h"
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg_harness.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/ffmpeg_rules.h"
 #include "sources/graph_supplier.h"
@@ -51,12 +56,12 @@ std::filesystem::path lavfiDirectory() {
     const std::string root = dvv::getEnvironment("DVV_LAVFI_FIXTURES").value_or("");
     REQUIRE_MESSAGE(!root.empty(), "DVV_LAVFI_FIXTURES is not set");
     const std::vector<std::byte> bytes =
-        dvv::components::testing::readFile(media::pathFromUtf8(root) / "current.txt");
+        dvv::components::testing::readFile(dvv::pathFromText(root) / "current.txt");
     std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.pop_back();
     }
-    return media::pathFromUtf8(text);
+    return dvv::pathFromText(text);
 }
 
 std::vector<LavfiFixture> manifest() {
@@ -133,7 +138,7 @@ void checkError(const dvv::Error& error, dvv::Errc code, std::string_view text) 
 }
 
 std::string formatName(const media::ISource& source) {
-    return media::descriptor(source.info().desc.format).name;
+    return media::formatDesc(source.info().desc.format).name;
 }
 
 constexpr std::string_view GRAPH_1 = "testsrc2=s=352x288:r=25,format=yuv420p";
@@ -189,9 +194,12 @@ TEST_SUITE("ffmpeg") {
         const media::OriginId origin = harness.origin(source);
         std::vector<dvv::Task<dvv::Result<media::OriginalRead>>> tasks;
         for (std::int64_t index = 11; index >= 0; --index) {
-            tasks.push_back(harness.store().acquireOriginal({origin, index}, media::Api::HostPlanes,
-                                                            harness.store().hostDomain(),
-                                                            harness.cpu(), true));
+            tasks.push_back(
+                harness.store().acquireOriginal({origin, index},
+                                                {.api = media::Api::HostPlanes,
+                                                 .domain = harness.store().hostDomain(),
+                                                 .fidelity = media::OriginalFidelity::Exact},
+                                                harness.cpu()));
         }
         auto reads = dvv::syncWait(dvv::whenAll(std::move(tasks)));
         REQUIRE(reads.size() == 12);
@@ -226,6 +234,15 @@ TEST_SUITE("ffmpeg") {
         const auto again = harness.originalBytes(source, 0);
         REQUIRE_MESSAGE(again.has_value(), again.error().describe());
         CHECK(*again == first);
+    }
+
+    TEST_CASE("lavfi: a graph source fixes format, size and rate") {
+        FfmpegHarness harness;
+        const auto source = harness.open("lavfi:testsrc2=s=64x48:r=25");
+        CHECK(source);
+        if (source) {
+            CHECK(source->info().fixed == media::FixedFields::all());
+        }
     }
 
     TEST_CASE("lavfi: colour from frame 0") {
@@ -289,6 +306,21 @@ TEST_SUITE("ffmpeg") {
                    "take no query");
         checkError(openError(harness, "lavfi:sine"), dvv::Errc::Unsupported,
                    "lavfi: filter sine is not supported");
+        // The source's index check: the texts with and without a frame count.
+        const dvv::Result<void> below = dvv::components::detail::checkFrameIndex(-1, std::nullopt);
+        CHECK_FALSE(below.has_value());
+        if (!below) {
+            CHECK(below.error().code == dvv::Errc::Internal);
+            CHECK(below.error().message == "frame -1 is outside [0, unbounded)");
+        }
+        const dvv::Result<void> past = dvv::components::detail::checkFrameIndex(3, 3);
+        CHECK_FALSE(past.has_value());
+        if (!past) {
+            CHECK(past.error().code == dvv::Errc::Internal);
+            CHECK(past.error().message == "frame 3 is outside [0, 3)");
+        }
+        CHECK(dvv::components::detail::checkFrameIndex(0, std::nullopt).has_value());
+        CHECK(dvv::components::detail::checkFrameIndex(2, 3).has_value());
     }
 
     TEST_CASE("lavfi: destroying the source with queued requests stops it") {
@@ -341,15 +373,78 @@ TEST_SUITE("ffmpeg") {
         }
     }
 
+    TEST_CASE("lavfi: a stopped open token ends the open") {
+        // The token is stopped before the call, so the poll in the first pull ends the open. No
+        // worker starts: a stray one would fail the run's leak check.
+        std::stop_source stop_source;
+        stop_source.request_stop();
+        const auto uri = dvv::parseUri("lavfi:testsrc2=s=64x48:r=25");
+        REQUIRE(uri.has_value());
+        if (uri) {
+            const auto opened = dvv::components::detail::openGraph(*uri, stop_source.get_token());
+            CHECK_FALSE(opened.has_value());
+            if (!opened) {
+                CHECK(opened.error().code == dvv::Errc::Cancelled);
+            }
+        }
+    }
+
+    TEST_CASE("lavfi: a stopped fetch token is Cancelled") {
+        auto made = dvv::components::detail::makeGraphWorkerForTest("testsrc2=s=64x48:r=25");
+        REQUIRE_MESSAGE(made.has_value(), made.error().describe());
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        if (made && pool) {
+            std::stop_source stop_source;
+            stop_source.request_stop();
+            const dvv::Result<void> stopped =
+                dvv::syncWait((*made)->fetch(1, **pool, stop_source.get_token()));
+            CHECK_FALSE(stopped.has_value());
+            if (!stopped) {
+                CHECK(stopped.error().code == dvv::Errc::Cancelled);
+            }
+            // The worker is not closed: the next request runs.
+            const dvv::Result<void> next = dvv::syncWait((*made)->fetch(1, **pool));
+            CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+        }
+    }
+
+    TEST_CASE("lavfi: detach ends a pulling request within 1 s with Cancelled") {
+        // Paced: frame 3000 takes at least 6 s on any machine, so the stop must come from the
+        // supplier's own check of the store's token while it pulls.
+        FfmpegHarness harness;
+        std::optional<PacedWorkers> paced(std::in_place);
+        const auto source = harness.open("lavfi:testsrc2=s=64x48:r=25");
+        static_cast<void>(harness.origin(source));
+        std::optional<dvv::Result<std::vector<std::byte>>> result;
+        std::thread reader([&] { result = harness.originalBytes(source, 3000); });
+        CHECK(paced->waitUntilDecoding());  // the request is pulling on the worker
+        const auto t0 = std::chrono::steady_clock::now();
+        harness.store().detach(harness.origin(source));
+        reader.join();
+        const auto elapsed = std::chrono::steady_clock::now() - t0;
+        paced.reset();
+        CHECK(elapsed < 1000ms);
+        REQUIRE(result.has_value());
+        // A missing result already failed above; the default (a value) then fails below.
+        const auto read = result.value_or(dvv::Result<std::vector<std::byte>>{});
+        CHECK_FALSE(read.has_value());
+        if (!read) {
+            CHECK(read.error().code == dvv::Errc::Cancelled);
+        }
+    }
+
     TEST_CASE("lavfi: graphs that open files or URLs are refused") {
         FfmpegHarness harness;
         auto& lifetimes = dvv::LifetimeRegistry::instance();
         // Relative with '/' separators: no drive letter, so no ':' to escape inside the graph.
         const std::filesystem::path clip =
             dvv::components::testing::fixture("lossless_huffyuv.avi");
-        const std::u8string relative =
-            std::filesystem::relative(clip, std::filesystem::current_path()).generic_u8string();
-        const std::string rel(relative.begin(), relative.end());
+        std::string rel =
+            dvv::pathText(std::filesystem::relative(clip, std::filesystem::current_path()));
+#if defined(_WIN32)
+        std::ranges::replace(rel, '\\', '/');
+#endif
         REQUIRE_FALSE(rel.empty());
         REQUIRE(rel.find(':') == std::string::npos);
         // Not on the allowlist (security review): file and URL sources, a QR source and drawtext

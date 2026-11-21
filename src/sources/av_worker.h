@@ -1,6 +1,6 @@
 #pragma once
 
-// One worker thread per FFmpeg or lavfi source (design v2 §5.1, §5.4, D5): the stop condition, the
+// One worker thread per FFmpeg or lavfi source: the stop condition, the
 // supplier interface, the frame check and the copy into a catalogue original.
 
 #include <atomic>
@@ -10,6 +10,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <stop_token>
+#include <vector>
 
 #include "dvv/base/error.h"
 #include "dvv/base/executor.h"
@@ -21,13 +23,17 @@
 
 namespace dvv::components::detail {
 
-// The stop condition of one worker (design v2 D5, §5.4): its own flag, set by ~AvWorker, or a
-// process-wide stopFfmpegSources() since the worker was created (ffmpeg::stopGeneration() changed).
+// The stop condition of one request: the worker's flag (set by ~AvWorker), a stopFfmpegSources()
+// since the worker was created (deprecated path; removed in 1.0.0), or the request's token (the
+// store's detach, the open's stop).
 struct StopCheck {
     const std::atomic<bool>* flag = nullptr;
     std::uint64_t generation = 0;
-    // flag->load(std::memory_order_acquire) || ffmpeg::stopGeneration() != generation
-    [[nodiscard]] bool operator()() const noexcept;
+    std::stop_token token{};
+    [[nodiscard]] bool operator()() const noexcept;  // flag || generation changed || token stopped
+    // Errc::Cancelled "source request cancelled" when the token is stopped, else Errc::Internal
+    // "source closed" (the flag and the deprecated generation keep today's code and text).
+    [[nodiscard]] Error error() const;
 };
 
 // The decode or filter state of one source. Called only on the worker thread.
@@ -40,13 +46,13 @@ public:
     IFrameSupplier& operator=(IFrameSupplier&&) = delete;
     virtual ~IFrameSupplier() = default;
     // The frame of `index`, owned by the supplier's ring and valid until the next call. Checks
-    // `stopped()` before each packet read, decode and filter step (Errc::Internal "source closed").
+    // `stopped()` before each packet read, decode and filter step (`stopped.error()` when it is).
     // Every frame it decodes or pulls passes `checkFrame` before it enters the ring.
     [[nodiscard]] virtual Result<const AVFrame*> frame(std::int64_t index,
                                                        const StopCheck& stopped) = 0;
 };
 
-// §5.4 frame check: width, height and format equal the descriptor's, else Errc::Format
+// The frame check: width, height and format equal the descriptor's, else Errc::Format
 // "frame <index> changed to <w>x<h> <pix_fmt name>".
 [[nodiscard]] Result<void> checkFrame(const AVFrame& frame, std::int64_t index,
                                       const media::FrameDesc& desc, int expected_av_format);
@@ -74,10 +80,11 @@ public:
     AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc desc,
              std::uint64_t generation);
     // Sets `stopping`, then destroys the pool: every queued request runs, sees the flag and
-    // completes with Internal "source closed"; then the supplier (and its AV objects) dies. Must
-    // not run on the worker thread (produce and fetch never return there). No produce or fetch may
-    // start once destruction begins: post_mutex_ only makes queued() a safe signal that every
-    // counted request is already posted.
+    // completes with Internal "source closed" (Errc::Cancelled "source request cancelled" when its
+    // token is stopped); then the supplier (and its AV objects) dies. Must not run on the worker
+    // thread (produce and fetch never return there). No produce or fetch may start once destruction
+    // begins: post_mutex_ only makes queued() a safe signal that every counted request is already
+    // posted.
     ~AvWorker();
     AvWorker(const AvWorker&) = delete;
     AvWorker& operator=(const AvWorker&) = delete;
@@ -86,11 +93,16 @@ public:
 
     // ISource::produce body: hop to the worker, supplier->frame(index), copyAndPublish, then hop
     // to ctx.io() before returning (never return on the worker thread: the caller may drop the
-    // last reference to the source there, and the destructor would join its own thread).
+    // last reference to the source there, and the destructor would join its own thread). The
+    // request's token is ctx.stopToken().
     [[nodiscard]] Task<Result<media::FrameRef>> produce(std::int64_t index,
                                                         media::ProduceContext& ctx);
-    // Test seam (stop test): the same path without a ProduceContext; resumes on `resume_on`.
-    [[nodiscard]] Task<Result<void>> fetch(std::int64_t index, IExecutor& resume_on);
+    // Test seam: the same path without a ProduceContext; resumes on `resume_on`. `stop` is the
+    // request's token (none by default). When `bytes` is set and the request succeeds, it holds the
+    // frame's planes in the tight catalogue geometry (the copy of copyAndPublish).
+    [[nodiscard]] Task<Result<void>> fetch(std::int64_t index, IExecutor& resume_on,
+                                           std::stop_token stop = {},
+                                           std::vector<std::byte>* bytes = nullptr);
     // Requests that entered produce/fetch and have not left the worker yet (tests).
     [[nodiscard]] std::size_t queued() const noexcept;
 
@@ -105,11 +117,12 @@ private:
         void await_resume() const noexcept {}
     };
     [[nodiscard]] ToWorker toWorker() noexcept { return ToWorker{this}; }
-    // On the worker: Internal "source closed" when stopped, else the supplier's frame.
-    [[nodiscard]] Result<const AVFrame*> frameOnWorker(std::int64_t index);
+    // On the worker: the check of the flag, the generation and `stop`; its error when stopped, else
+    // the supplier's frame.
+    [[nodiscard]] Result<const AVFrame*> frameOnWorker(std::int64_t index, std::stop_token stop);
 
     std::mutex post_mutex_;              // orders posting against the stop flag
-    std::atomic<bool> stopping_{false};  // design v2 D5/§5.4: the stop flag
+    std::atomic<bool> stopping_{false};  // the stop flag
     StopCheck stop_;                     // the flag or stopFfmpegSources()
     std::atomic<std::size_t> queued_{0};
     media::FrameDesc desc_;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(dvv_components VERSION 0.2.0 DESCRIPTION "dvv component libraries" LANGUAGES CXX)
+project(dvv_components VERSION 0.3.0 DESCRIPTION "dvv component libraries" LANGUAGES CXX)
 # Version string; a pre-release build adds its release-stage label.
 set(dvv_components_VERSION_STRING "${PROJECT_VERSION}")
 
@@ -33,13 +33,13 @@ set(DVV_COMPONENTS_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake" CACHE INTERNAL
     "dvv-components CMake modules")
 include("${DVV_COMPONENTS_CMAKE_DIR}/DvvComponent.cmake")
 
-# What an application links besides dvv_components_link(<exe>).
+# What an application links besides dvv_link_enabled_components(<exe>).
 add_library(dvv_components INTERFACE)
 add_library(dvv::components ALIAS dvv_components)
 set_target_properties(dvv_components PROPERTIES EXPORT_NAME components)
 target_link_libraries(dvv_components INTERFACE dvv::media)
 
-# FFmpeg of the third-party prefix: headers at build time, libraries at run time (M4 design D3).
+# FFmpeg of the third-party prefix: headers at build time, libraries at run time.
 find_package(dvv_ffmpeg_sdk REQUIRED CONFIG)
 
 # dvv_ffmpeg's private headers and FFmpeg's headers (system headers), for dvv_ffmpeg, the component
@@ -49,7 +49,7 @@ add_library(dvv_ffmpeg_internal INTERFACE)
 target_include_directories(dvv_ffmpeg_internal INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(dvv_ffmpeg_internal INTERFACE dvv::ffmpeg_headers)
 
-# The FFmpeg run-time binding (M4 design D3, §4.4): loader, function table, AVERROR mapping and log
+# The FFmpeg run-time binding: loader, function table, AVERROR mapping and log
 # routing. Public part: dvv/components/ffmpeg.h (status and loading; no FFmpeg types).
 add_library(dvv_ffmpeg STATIC
     src/ffmpeg/checks.cpp
@@ -69,11 +69,12 @@ target_link_libraries(dvv_components INTERFACE dvv::ffmpeg)
 # Component libraries (dvv_add_component) go here, before the install rules and the tests: the
 # installed package and the conformance test list them.
 
-# FFmpeg source providers (design v2 §4.4): loaded at run time, never linked (D3).
-dvv_add_component(ffmpeg KIND Source
+# FFmpeg source providers: loaded at run time, never linked.
+dvv_add_component(ffmpeg
     SOURCES src/sources/ffmpeg_rules.cpp src/sources/frame_ring.cpp src/sources/av_worker.cpp
-            src/sources/container_supplier.cpp src/sources/ffmpeg_provider.cpp
-            src/sources/graph_supplier.cpp src/sources/lavfi_provider.cpp
+            src/sources/av_source.cpp src/sources/container_supplier.cpp
+            src/sources/ffmpeg_provider.cpp src/sources/graph_supplier.cpp
+            src/sources/lavfi_provider.cpp src/sources/ffmpeg_module.cpp
     LINK dvv::ffmpeg $<BUILD_INTERFACE:dvv_ffmpeg_internal>
     REGISTERS ffmpeg lavfi)
 
@@ -82,6 +83,8 @@ install(TARGETS dvv_components dvv_ffmpeg ${component_libraries} EXPORT dvv_comp
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 set(config_dir ${CMAKE_INSTALL_LIBDIR}/cmake/dvv_components)
 install(EXPORT dvv_componentsTargets NAMESPACE dvv:: DESTINATION ${config_dir})
+get_property(component_ids GLOBAL PROPERTY DVV_COMPONENTS_IDS)
+list(JOIN component_ids " " DVV_COMPONENTS_INSTALLED_IDS)
 set(DVV_COMPONENTS_INSTALLED_LIBRARIES "")
 foreach(library IN LISTS component_libraries)
     string(REGEX REPLACE "^dvv_" "dvv::" exported "${library}")

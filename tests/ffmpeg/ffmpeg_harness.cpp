@@ -27,6 +27,7 @@
 #include "dvv/base/executors.h"
 #include "dvv/base/task.h"
 #include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
 #include "dvv/media/frame.h"
 #include "dvv/media/frame_store.h"
@@ -44,12 +45,6 @@ namespace {
 
 constexpr std::size_t POOL_THREADS = 4;
 
-// UTF-8 with '/' separators (URIs and messages).
-std::string genericUtf8(const std::filesystem::path& path) {
-    const std::u8string text = path.generic_u8string();
-    return {text.begin(), text.end()};
-}
-
 }  // namespace
 
 FfmpegHarness::FfmpegHarness() {
@@ -59,11 +54,9 @@ FfmpegHarness::FfmpegHarness() {
     auto io = ExecutorFactory::makeThreadPool(POOL_THREADS);
     REQUIRE_MESSAGE(io.has_value(), io.error().describe());
     io_ = std::move(*io);
-    Capabilities caps;
-    addFfmpegCapabilities(loadFfmpeg(), caps);
-    REQUIRE(caps.has("ffmpeg"));
-    registry_ = ComponentRegistry::create(caps);
+    registry_ = ComponentRegistry::load();
     REQUIRE(registry_ != nullptr);
+    REQUIRE(registry_->capabilities().has(FFMPEG_CAPABILITY));
     auto factory = media::SourceFactory::create(*registry_, io_);
     REQUIRE_MESSAGE(factory.has_value(), factory.error().describe());
     factory_ = std::move(*factory);
@@ -106,13 +99,21 @@ media::OriginId FfmpegHarness::origin(const std::shared_ptr<media::ISource>& sou
     return *attached;
 }
 
+media::OriginId FfmpegHarness::reattach(const std::shared_ptr<media::ISource>& source) {
+    origins_.erase(source.get());
+    return origin(source);
+}
+
 Result<std::vector<std::byte>> FfmpegHarness::originalBytes(
     const std::shared_ptr<media::ISource>& source, std::int64_t index) {
     const media::OriginId id = origin(source);
     Result<std::vector<std::byte>> bytes;
     {
-        auto read = syncWait(store_->acquireOriginal({id, index}, media::Api::HostPlanes,
-                                                     store_->hostDomain(), *cpu_, true));
+        auto read = syncWait(store_->acquireOriginal({id, index},
+                                                     {.api = media::Api::HostPlanes,
+                                                      .domain = store_->hostDomain(),
+                                                      .fidelity = media::OriginalFidelity::Exact},
+                                                     *cpu_));
         if (read) {
             bytes = originalReadBytes(*read);
         } else {
@@ -125,7 +126,7 @@ Result<std::vector<std::byte>> FfmpegHarness::originalBytes(
 }
 
 std::vector<std::byte> originalReadBytes(const media::OriginalRead& read) {
-    const auto* planes = std::get_if<media::HostPlanesB>(&read.lease().binding());
+    const auto* planes = read.lease().planes();
     REQUIRE(planes != nullptr);
     std::vector<std::byte> copy;
     for (std::size_t p = 0; p < planes->planeCount; ++p) {
@@ -137,26 +138,26 @@ std::vector<std::byte> originalReadBytes(const media::OriginalRead& read) {
 std::filesystem::path fixtureDirectory() {
     const std::string root = getEnvironment("DVV_FFMPEG_FIXTURES").value_or("");
     REQUIRE_MESSAGE(!root.empty(), "DVV_FFMPEG_FIXTURES is not set");
-    const std::filesystem::path current = media::pathFromUtf8(root) / "current.txt";
+    const std::filesystem::path current = dvv::pathFromText(root) / "current.txt";
     std::ifstream file(current, std::ios::binary);
-    REQUIRE_MESSAGE(file.good(), "no fixtures: " << genericUtf8(current));
+    REQUIRE_MESSAGE(file.good(), "no fixtures: " << dvv::pathDisplayText(current));
     std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.pop_back();
     }
-    return media::pathFromUtf8(text);
+    return dvv::pathFromText(text);
 }
 
 std::filesystem::path fixture(std::string_view name) {
-    const std::filesystem::path path = fixtureDirectory() / media::pathFromUtf8(name);
+    const std::filesystem::path path = fixtureDirectory() / dvv::pathFromText(name);
     std::error_code error;
     REQUIRE_MESSAGE(std::filesystem::is_regular_file(path, error),
-                    "missing fixture " << genericUtf8(path));
+                    "missing fixture " << dvv::pathDisplayText(path));
     return path;
 }
 
 std::string fixturePath(std::string_view name) {
-    return genericUtf8(fixture(name));
+    return dvv::pathText(fixture(name));
 }
 
 std::string fixtureUri(std::string_view name) {
@@ -173,7 +174,7 @@ std::vector<FrameHash> referenceHashes(std::string_view framemd5_name) {
 
 std::vector<std::byte> readFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
-    REQUIRE_MESSAGE(file.good(), "cannot read " << genericUtf8(path));
+    REQUIRE_MESSAGE(file.good(), "cannot read " << dvv::pathDisplayText(path));
     const std::string text((std::istreambuf_iterator<char>(file)),
                            std::istreambuf_iterator<char>());
     const auto* data = reinterpret_cast<const std::byte*>(text.data());
@@ -182,7 +183,7 @@ std::vector<std::byte> readFile(const std::filesystem::path& path) {
 
 void writeFile(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    REQUIRE_MESSAGE(file.good(), "cannot write " << genericUtf8(path));
+    REQUIRE_MESSAGE(file.good(), "cannot write " << dvv::pathDisplayText(path));
     file.write(reinterpret_cast<const char*>(bytes.data()),
                static_cast<std::streamsize>(bytes.size()));
     REQUIRE(file.good());
@@ -247,7 +248,7 @@ TemporaryDirectory::~TemporaryDirectory() {
 }
 
 std::string TemporaryDirectory::uri(std::string_view name) const {
-    return "file:" + genericUtf8(path_ / media::pathFromUtf8(name));
+    return "file:" + dvv::pathText(path_ / dvv::pathFromText(name));
 }
 
 }  // namespace dvv::components::testing
