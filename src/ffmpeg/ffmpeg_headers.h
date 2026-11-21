@@ -1,6 +1,6 @@
 #pragma once
 
-// The only include of FFmpeg's C headers (M4 design D3): they have no extern "C" of their own. The
+// The only include of FFmpeg's C headers: they have no extern "C" of their own. The
 // include directory is a system directory (dvv::ffmpeg_headers), so their warnings are not ours.
 // Never use a C-only macro or an inline helper that calls an exported function (it would need
 // FFmpeg linked): AVRational{1, AV_TIME_BASE} instead of AV_TIME_BASE_Q, api().av_strerror instead

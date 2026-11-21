@@ -1,4 +1,4 @@
-// The FFmpeg run-time loader (M4 design D3, §4.4, §5.5, §6): finds, opens, resolves and checks the
+// The FFmpeg run-time loader: finds, opens, resolves and checks the
 // six libraries once per process and never unloads them; routes FFmpeg's log to the dvv logger.
 
 #include <array>
@@ -14,14 +14,15 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "dvv/base/environment.h"
 #include "dvv/base/log.h"
 #include "dvv/base/paths.h"
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/media/types.h"
 #include "dvv/platform/dynamic_library.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
@@ -32,20 +33,44 @@ namespace {
 using ffmpeg::Api;
 using ffmpeg::Library;
 
-struct LibraryInfo {
+struct LibraryEntry {
     Library library;
     std::string_view name;
     unsigned compiledVersion;
+    decltype(Api::avutil_version) Api::* version;              // <lib>_version
+    decltype(Api::avutil_license) Api::* licence;              // <lib>_license
+    decltype(Api::avutil_configuration) Api::* configuration;  // <lib>_configuration
 };
-// The FfmpegStatus::libraryVersions order.
-constexpr std::array<LibraryInfo, 6> LIBRARIES{{
-    {Library::Avutil, "avutil", LIBAVUTIL_VERSION_INT},
-    {Library::Avcodec, "avcodec", LIBAVCODEC_VERSION_INT},
-    {Library::Avformat, "avformat", LIBAVFORMAT_VERSION_INT},
-    {Library::Swscale, "swscale", LIBSWSCALE_VERSION_INT},
-    {Library::Swresample, "swresample", LIBSWRESAMPLE_VERSION_INT},
-    {Library::Avfilter, "avfilter", LIBAVFILTER_VERSION_INT},
-}};
+// The library prefixes, in the FfmpegStatus::libraryVersions order.
+#define DVV_FFMPEG_LIBRARY_TABLE(X)                      \
+    X(Avutil, avutil, LIBAVUTIL_VERSION_INT)             \
+    X(Avcodec, avcodec, LIBAVCODEC_VERSION_INT)          \
+    X(Avformat, avformat, LIBAVFORMAT_VERSION_INT)       \
+    X(Swscale, swscale, LIBSWSCALE_VERSION_INT)          \
+    X(Swresample, swresample, LIBSWRESAMPLE_VERSION_INT) \
+    X(Avfilter, avfilter, LIBAVFILTER_VERSION_INT)
+// NOLINTBEGIN(bugprone-macro-parentheses)
+// The three function types are equal in every library's headers; a header change fails the build
+// here instead of the call.
+#define DVV_FFMPEG_LIBRARY_CHECK(library_id, prefix, version_int)                                  \
+    static_assert(std::is_same_v<decltype(Api::prefix##_version), decltype(Api::avutil_version)>); \
+    static_assert(std::is_same_v<decltype(Api::prefix##_license), decltype(Api::avutil_license)>); \
+    static_assert(std::is_same_v<decltype(Api::prefix##_configuration),                            \
+                                 decltype(Api::avutil_configuration)>);
+DVV_FFMPEG_LIBRARY_TABLE(DVV_FFMPEG_LIBRARY_CHECK)
+#undef DVV_FFMPEG_LIBRARY_CHECK
+#define DVV_FFMPEG_LIBRARY_ENTRY(library_id, prefix, version_int) \
+    {Library::library_id,                                         \
+     #prefix,                                                     \
+     version_int,                                                 \
+     &Api::prefix##_version,                                      \
+     &Api::prefix##_license,                                      \
+     &Api::prefix##_configuration},
+constexpr std::array<LibraryEntry, 6> LIBRARIES{
+    {DVV_FFMPEG_LIBRARY_TABLE(DVV_FFMPEG_LIBRARY_ENTRY)}};
+#undef DVV_FFMPEG_LIBRARY_ENTRY
+#undef DVV_FFMPEG_LIBRARY_TABLE
+// NOLINTEND(bugprone-macro-parentheses)
 // Each library after the FFmpeg libraries it depends on.
 constexpr std::array<Library, 6> LOAD_ORDER{Library::Avutil,   Library::Swresample,
                                             Library::Swscale,  Library::Avcodec,
@@ -58,20 +83,21 @@ constexpr std::size_t indexOf(Library library) noexcept {
 }
 static_assert(indexOf(Library::Avfilter) + 1 == LIBRARIES.size());
 
-const LibraryInfo& infoOf(Library library) noexcept {
+const LibraryEntry& entryOf(Library library) noexcept {
     return LIBRARIES[indexOf(library)];
 }
 
 // The file name the loader opens, e.g. "avutil-60.dll".
 std::string libraryFile(Library library) {
-    const LibraryInfo& info = infoOf(library);
-    return detail::libraryFileName(info.name, info.compiledVersion >> 16);
+    const LibraryEntry& entry = entryOf(library);
+    return platform::libraryFileName(entry.name, entry.compiledVersion >> 16);
 }
 
-// Process infrastructure (design §6): created once, never destroyed, like the Logger.
+// Process infrastructure: created once, never destroyed, like the Logger.
 struct LoaderState {
     std::once_flag once;
     FfmpegStatus status;
+    detail::SearchSource source = detail::SearchSource::Default;  // where the search came from
     Api api;
     std::atomic<bool> loaded{false};
     std::vector<platform::DynamicLibrary> kept;  // keepLoaded(); never unloaded
@@ -99,7 +125,7 @@ void markDecodeError(void* object) noexcept {
     }
 }
 
-// FFmpeg's log goes to the dvv logger, capped at warning; nothing reaches stderr (design D3).
+// FFmpeg's log goes to the dvv logger, capped at warning; nothing reaches stderr.
 // Errors for a codec context with a DecodeErrorMark also raise it.
 // Called from FFmpeg's C frames (maybe its worker threads): no exception may escape, so a line that
 // cannot be formatted or written is dropped.
@@ -165,45 +191,12 @@ std::string text(const char* value) {
 }
 
 // <lib>_version(), <lib>_license() and <lib>_configuration() of one opened library.
-detail::LibraryFacts factsOf(const Api& api, const LibraryInfo& info) {
-    detail::LibraryFacts facts{.name = std::string(info.name),
-                               .runtimeVersion = 0,
-                               .compiledVersion = info.compiledVersion,
-                               .licence = {},
-                               .configuration = {}};
-    switch (info.library) {
-        case Library::Avutil:
-            facts.runtimeVersion = api.avutil_version();
-            facts.licence = text(api.avutil_license());
-            facts.configuration = text(api.avutil_configuration());
-            break;
-        case Library::Avcodec:
-            facts.runtimeVersion = api.avcodec_version();
-            facts.licence = text(api.avcodec_license());
-            facts.configuration = text(api.avcodec_configuration());
-            break;
-        case Library::Avformat:
-            facts.runtimeVersion = api.avformat_version();
-            facts.licence = text(api.avformat_license());
-            facts.configuration = text(api.avformat_configuration());
-            break;
-        case Library::Swscale:
-            facts.runtimeVersion = api.swscale_version();
-            facts.licence = text(api.swscale_license());
-            facts.configuration = text(api.swscale_configuration());
-            break;
-        case Library::Swresample:
-            facts.runtimeVersion = api.swresample_version();
-            facts.licence = text(api.swresample_license());
-            facts.configuration = text(api.swresample_configuration());
-            break;
-        case Library::Avfilter:
-            facts.runtimeVersion = api.avfilter_version();
-            facts.licence = text(api.avfilter_license());
-            facts.configuration = text(api.avfilter_configuration());
-            break;
-    }
-    return facts;
+detail::LibraryInfo infoOf(const Api& api, const LibraryEntry& entry) {
+    return detail::LibraryInfo{.name = std::string(entry.name),
+                               .runtimeVersion = (api.*entry.version)(),
+                               .compiledVersion = entry.compiledVersion,
+                               .licence = text((api.*entry.licence)()),
+                               .configuration = text((api.*entry.configuration)())};
 }
 
 // The directory to load from, or the reason FFmpeg stays off.
@@ -246,32 +239,32 @@ Located locate(const FfmpegLoadOptions& options) {
         if (i > 0) {
             looked += i + 1 == plan.directories.size() ? " and " : ", ";
         }
-        looked += media::utf8FromPath(plan.directories[i]);
+        looked += pathDisplayText(plan.directories[i]);
     }
     return {.directory = {},
             .source = plan.source,
             .error = std::format("FFmpeg not found (looked in {}; {})", looked, HINT)};
 }
 
-// Behaviour of Task 4: plan, directory, open, resolve, facts, refusal, success.
+// Behaviour: plan, directory, open, resolve, library info, refusal, success.
 void load(LoaderState& state, const FfmpegLoadOptions& options) {
     FfmpegStatus& status = state.status;
     status = {};  // a retry after a throwing attempt (call_once runs again) starts clean
     Located located = locate(options);
+    state.source = located.source;  // before the first return: every result carries it
     if (!located.error.empty()) {
         status.reason = std::move(located.error);
         return;
     }
     const std::filesystem::path directory = located.directory.lexically_normal();
-    const std::string where = std::format("FFmpeg in {} ({})", media::utf8FromPath(directory),
+    const std::string where = std::format("FFmpeg in {} ({})", pathDisplayText(directory),
                                           detail::sourceName(located.source));
 
     OpenedLibraries opened;
     std::string lavfi_reason;
     for (const Library library : LOAD_ORDER) {
-        auto handle =
-            platform::DynamicLibrary::open(media::utf8FromPath(directory / libraryFile(library)),
-                                           platform::LibrarySearch::DllDirectory);
+        auto handle = platform::DynamicLibrary::open(pathText(directory / libraryFile(library)),
+                                                     platform::LibrarySearch::LibraryDirectory);
         if (!handle) {
             if (library == Library::Avfilter) {
                 lavfi_reason = std::format("{}: libavfilter is not available: {}", where,
@@ -300,15 +293,15 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
         opened[indexOf(Library::Avfilter)].reset();  // unloaded; never kept
     }
 
-    std::vector<detail::LibraryFacts> facts;
+    std::vector<detail::LibraryInfo> infos;
     std::array<std::uint32_t, 6> versions{};
     for (std::size_t i = 0; i < LIBRARIES.size(); ++i) {
         if (opened[indexOf(LIBRARIES[i].library)]) {
-            facts.push_back(factsOf(api, LIBRARIES[i]));
-            versions[i] = facts.back().runtimeVersion;
+            infos.push_back(infoOf(api, LIBRARIES[i]));
+            versions[i] = infos.back().runtimeVersion;
         }
     }
-    if (auto refusal = detail::refusalReason(facts)) {
+    if (auto refusal = detail::refusalReason(infos)) {
         status.reason = std::format("{} {}", where, *refusal);
         return;
     }
@@ -333,7 +326,7 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
 
 }  // namespace
 
-const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
+detail::LoadOutcome detail::loadOnce(const FfmpegLoadOptions& options) {
     LoaderState& state = loaderState();
     std::call_once(state.once, [&] {
         load(state, options);
@@ -341,15 +334,19 @@ const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
             state.loaded.store(true, std::memory_order_release);
         }
     });
-    return state.status;
+    return {.status = state.status, .source = state.source};
+}
+
+const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
+    return detail::loadOnce(options).status;
 }
 
 void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps) {
     if (status.core) {
-        caps.add("ffmpeg");
+        caps.add(FFMPEG_CAPABILITY);
     }
     if (status.lavfi) {
-        caps.add("ffmpeg.lavfi");
+        caps.add(FFMPEG_LAVFI_CAPABILITY);
     }
 }
 
@@ -376,6 +373,19 @@ const Api& api() {
         throw std::logic_error("FFmpeg is not loaded");
     }
     return state.api;
+}
+
+std::optional<std::string> averrorText(int averror) {
+    LoaderState& state = loaderState();
+    if (!state.loaded.load(std::memory_order_acquire)) {
+        return std::nullopt;
+    }
+    std::array<char, AV_ERROR_MAX_STRING_SIZE> buffer{};
+    if (state.api.av_strerror(averror, buffer.data(), buffer.size()) != 0 ||
+        buffer.front() == '\0') {
+        return std::nullopt;
+    }
+    return std::string(buffer.data());
 }
 }  // namespace ffmpeg
 

@@ -1,4 +1,4 @@
-// The pure rules of the FFmpeg providers (M4 design v2 §4.4, D5, D28), without FFmpeg.
+// The pure rules of the FFmpeg providers, without FFmpeg.
 
 #include <doctest/doctest.h>
 
@@ -46,7 +46,7 @@ media::ColourParams colour(media::ColourMatrix matrix, media::ColourRange range,
 dvv::Result<media::ColourSpec> checkQuery(std::string_view query) {
     const auto uri = dvv::parseUri(std::string("file:x.mkv") + std::string(query));
     REQUIRE_MESSAGE(uri.has_value(), std::string(query));
-    const detail::ContainerFacts facts{
+    const detail::ContainerInfo facts{
         .format = formatId("yuv420p10le"), .width = 64, .height = 48, .fps = {25, 1}};
     return detail::checkContainerQuery(*uri, facts);
 }
@@ -93,7 +93,7 @@ TEST_SUITE("ffmpeg_rules") {
                   media::ColourSpec{.preset = std::nullopt, .range = media::ColourRange::Full});
         }
         {
-            // colour= and range= (D5R §3.1): as written; range= with every standard.
+            // colour= and range=: as written; range= with every standard.
             const auto parsed = checkQuery("?colour=bt2100-pq&range=full");
             REQUIRE_MESSAGE(parsed.has_value(), parsed.error().describe());
             CHECK(*parsed == media::ColourSpec{.preset = media::ColourPreset::Bt2100Pq,
@@ -111,7 +111,7 @@ TEST_SUITE("ffmpeg_rules") {
                         "bt2100-pq, bt2100-hlg)");
         checkQueryFails("?colour=jpeg", "bad colour 'jpeg'");
         checkQueryFails("?range=tv", "bad range 'tv' (full, limited)");
-        // The removed keys (D5R §3.1) name colour=<standard>.
+        // The removed keys name colour=<standard>.
         for (const std::string_view key : {"matrix", "kr", "kb", "transfer", "primaries"}) {
             CAPTURE(key);
             const auto removed = checkQuery(std::string("?") + std::string(key) + "=bt709");
@@ -144,7 +144,7 @@ TEST_SUITE("ffmpeg_rules") {
             // A yuvj alias names its yuv*p format (the range stays the container's or `range`).
             const auto uri = dvv::parseUri("file:x.mkv?fmt=yuvj420p");
             REQUIRE(uri.has_value());
-            const detail::ContainerFacts facts{
+            const detail::ContainerInfo facts{
                 .format = formatId("yuv420p"), .width = 64, .height = 48, .fps = {25, 1}};
             const auto alias = detail::checkContainerQuery(*uri, facts);
             REQUIRE_MESSAGE(alias.has_value(), alias.error().describe());
@@ -192,7 +192,7 @@ TEST_SUITE("ffmpeg_rules") {
                                     Primaries::Bt601_525));
         }
         {
-            // A YUV-model stream tagged with the GBR matrix keeps it (design §3.3 rule 5): the
+            // A YUV-model stream tagged with the GBR matrix keeps it: the
             // planes hold G, B and R, so a standard replaces only the curve and the primaries.
             const media::ColourParams gbr = colour(ColourMatrix::Rgb, ColourRange::Full);
             const auto result = detail::overrideColour(
@@ -242,9 +242,7 @@ TEST_SUITE("ffmpeg_rules") {
     TEST_CASE("ffmpeg rules: the PAL/NTSC hint and non-standard tags") {
         using media::Bt601Hint;
         const auto hint = [](AVColorSpace space, AVColorPrimaries primaries) {
-            return detail::mapColour(space, AVCOL_RANGE_UNSPECIFIED, AVCOL_TRC_UNSPECIFIED,
-                                     primaries)
-                .hint;
+            return detail::mapColour({.space = space, .primaries = primaries}).hint;
         };
         const auto bt601 = [&](AVColorSpace space, AVColorPrimaries primaries) {
             return hint(space, primaries).bt601;
@@ -264,7 +262,7 @@ TEST_SUITE("ffmpeg_rules") {
 
         const auto non_standard = [](AVColorSpace space, AVColorTransferCharacteristic transfer,
                                      AVColorPrimaries primaries) {
-            return detail::mapColour(space, AVCOL_RANGE_UNSPECIFIED, transfer, primaries)
+            return detail::mapColour({.space = space, .transfer = transfer, .primaries = primaries})
                 .hint.nonStandard;
         };
         for (const int code : {4, 8, 10, 11, 12, 22}) {
@@ -305,10 +303,7 @@ TEST_SUITE("ffmpeg_rules") {
         using media::ColourMatrix;
         using media::ColourModel;
         using media::Primaries;
-        const media::ColourParams ntsc =
-            detail::mapColour(AVCOL_SPC_SMPTE170M, AVCOL_RANGE_UNSPECIFIED, AVCOL_TRC_UNSPECIFIED,
-                              AVCOL_PRI_UNSPECIFIED)
-                .params;
+        const media::ColourParams ntsc = detail::mapColour({.space = AVCOL_SPC_SMPTE170M}).params;
         CHECK(detail::withBt601Hint(ntsc, Bt601Hint::Ntsc, ColourModel::Yuv).primaries ==
               Primaries::Bt601_525);
         CHECK(detail::withBt601Hint(ntsc, Bt601Hint::Pal, ColourModel::Yuv).primaries ==
@@ -329,24 +324,16 @@ TEST_SUITE("ffmpeg_rules") {
 
     TEST_CASE("ffmpeg rules: colour mapping table") {
         const auto matrix = [](AVColorSpace space) {
-            return detail::mapColour(space, AVCOL_RANGE_UNSPECIFIED, AVCOL_TRC_UNSPECIFIED,
-                                     AVCOL_PRI_UNSPECIFIED)
-                .params.matrix;
+            return detail::mapColour({.space = space}).params.matrix;
         };
         const auto range = [](AVColorRange value) {
-            return detail::mapColour(AVCOL_SPC_UNSPECIFIED, value, AVCOL_TRC_UNSPECIFIED,
-                                     AVCOL_PRI_UNSPECIFIED)
-                .params.range;
+            return detail::mapColour({.range = value}).params.range;
         };
         const auto transfer = [](AVColorTransferCharacteristic value) {
-            return detail::mapColour(AVCOL_SPC_UNSPECIFIED, AVCOL_RANGE_UNSPECIFIED, value,
-                                     AVCOL_PRI_UNSPECIFIED)
-                .params.transfer;
+            return detail::mapColour({.transfer = value}).params.transfer;
         };
         const auto primaries = [](AVColorPrimaries value) {
-            return detail::mapColour(AVCOL_SPC_UNSPECIFIED, AVCOL_RANGE_UNSPECIFIED,
-                                     AVCOL_TRC_UNSPECIFIED, value)
-                .params.primaries;
+            return detail::mapColour({.primaries = value}).params.primaries;
         };
         using media::ColourMatrix;
         using media::ColourRange;
@@ -379,9 +366,11 @@ TEST_SUITE("ffmpeg_rules") {
         CHECK(transfer(AVCOL_TRC_SMPTE240M) == TransferFn::Unspecified);
         CHECK(primaries(AVCOL_PRI_SMPTE240M) == Primaries::Bt601_525);
         CHECK(primaries(AVCOL_PRI_BT470M) == Primaries::Unspecified);
-        const media::ColourParams all =
-            detail::mapColour(AVCOL_SPC_BT709, AVCOL_RANGE_MPEG, AVCOL_TRC_BT709, AVCOL_PRI_BT709)
-                .params;
+        const media::ColourParams all = detail::mapColour({.space = AVCOL_SPC_BT709,
+                                                           .range = AVCOL_RANGE_MPEG,
+                                                           .transfer = AVCOL_TRC_BT709,
+                                                           .primaries = AVCOL_PRI_BT709})
+                                            .params;
         CHECK(all == colour(ColourMatrix::Bt709, ColourRange::Limited, TransferFn::Bt1886,
                             Primaries::Bt709));
     }
@@ -405,11 +394,13 @@ TEST_SUITE("ffmpeg_rules") {
         CHECK_FALSE(detail::catalogueFormat("bgr0").has_value());
     }
 
-    TEST_CASE("ffmpeg rules: fps text") {
-        CHECK(detail::fpsText({25, 1}) == "25");
-        CHECK(detail::fpsText({30000, 1001}) == "30000/1001");
+    TEST_CASE("ffmpeg rules: reduced rates") {
         CHECK(detail::reduced({50, 2}) == media::Rational{25, 1});
         CHECK(detail::reduced({60000, 2002}) == media::Rational{30000, 1001});
+    }
+
+    TEST_CASE("ffmpeg rules: the container's rate defaults to FALLBACK_FPS") {
+        CHECK(detail::ContainerInfo{}.fps == media::FALLBACK_FPS);
     }
 
     TEST_CASE("ffmpeg rules: lossless codec allowlist") {

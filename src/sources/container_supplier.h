@@ -1,14 +1,17 @@
 #pragma once
 
-// The `ffmpeg` provider's container path (design v2 §4.4, D5, D28; v1.0 codec scope): open with
+// The `ffmpeg` provider's container path: open with
 // the lossless codec allowlist and the frame index, then the indexed and Sequential decode paths on
 // the source's worker.
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "dvv/base/error.h"
@@ -16,21 +19,31 @@
 #include "dvv/media/source.h"
 #include "dvv/media/types.h"
 #include "ffmpeg/api.h"
+#include "sources/av_source.h"
 #include "sources/av_worker.h"
 #include "sources/frame_ring.h"
 
 namespace dvv::components::detail {
 
+// Test seam of ContainerSupplier: empty in production.
+struct ContainerTestHooks {
+    // Called after av_read_frame read a packet of the stream, before the poll before the send.
+    std::function<void()> afterPacketRead{};
+    // When set and returning a value: the packet is dropped instead of sent, and that value is
+    // used as avcodec_send_packet's result (an injected failure).
+    std::function<std::optional<int>()> sendFailure{};
+};
+
 // The decode state of one container source; after open it is touched only on its worker.
 class ContainerSupplier final : public IFrameSupplier {
 public:
-    // Open steps 2-8 (design v2 §4.4): avformat_open_input with protocol_whitelist=file and
+    // Open steps 2-8: avformat_open_input with protocol_whitelist=file and
     // codec_whitelist = LOSSLESS_CODECS (FFmpeg opens no other decoder, also while it probes), and
     // avformat_find_stream_info; the stream choice, the codec allowlist (before any scan or decoder
     // lookup; it also wins over a failed stream probe), the frame index (the container's own when
     // it lists every frame, else a demux-only scan), the mode, the reopen, the decoder and frame 0
-    // (into the ring). `stopped` ends the open with Errc::Internal "source closed" (checked before
-    // each scanned packet and while frame 0 decodes).
+    // (into the ring). `stopped` ends the open with `stopped.error()` (checked before each scanned
+    // packet and while frame 0 decodes).
     [[nodiscard]] static Result<std::unique_ptr<ContainerSupplier>> open(
         const std::string& path_utf8, const StopCheck& stopped);
     ~ContainerSupplier() override = default;
@@ -58,13 +71,15 @@ public:
 
     // Test seam (an injected reopen failure): later reopens open `path_utf8` instead.
     void setPathForTest(const std::string& path_utf8) { url_ = "file:" + path_utf8; }
+    // Test seam: the hooks of every later request (the test open sets them after frame 0).
+    void setHooksForTest(ContainerTestHooks hooks) { hooks_ = std::move(hooks); }
 
 private:
     struct Entry {
         std::int64_t pts = 0;
         bool key = false;
     };
-    // The first frame's size and AVPixelFormat: every later frame must equal them (§5.4).
+    // The first frame's size and AVPixelFormat: every later frame must equal them.
     struct Expected {
         std::uint32_t width = 0, height = 0;
         int format = -1;
@@ -94,6 +109,10 @@ private:
     // Reads the next packet of the stream and sends it to the decoder; the drain packet at the
     // demuxer's end.
     [[nodiscard]] Result<void> sendNextPacket(const StopCheck& stopped);
+    // A stop at a poll: sets ended_at_poll_, returns stopped.error().
+    [[nodiscard]] Error stopAtPoll(const StopCheck& stopped);
+    // Seeks and restarts drop a pending packet (av_packet_unref, flag cleared) first.
+    void dropPendingPacket();
     // The index of a decoded frame (Sequential: the next number; indexed: the entry of its pts),
     // nullopt when it is dropped.
     [[nodiscard]] std::optional<std::int64_t> indexOf(const AVFrame& frame);
@@ -130,22 +149,26 @@ private:
     // Set by decodeUntil when frame `index` was damaged: the decoder is still in step, so frame()
     // does not reset.
     bool kept_position_ = false;
+    // A packet read before a stop and not sent yet: the next sendNextPacket() sends it first. A
+    // seek or a restart drops it.
+    bool pending_packet_ = false;
+    // The last decode ended at a stop poll: the decoder is in step, so frame() does not reset.
+    bool ended_at_poll_ = false;
+    ContainerTestHooks hooks_;  // empty in production
     std::optional<Expected> expected_;
 };
 
-// The result of open steps 2-12 for one `ffmpeg` URI: the source's info and its worker (which owns
-// the supplier, with frame 0 in its ring).
-struct OpenedContainer {
-    media::SourceInfo info;
-    std::unique_ptr<AvWorker> worker;
-};
-// FfmpegSourceProvider::open's work (it runs on the I/O pool): the supplier, the catalogue format,
-// the frame rate, the D28 query check, the colour, the resolved URI and the worker.
-[[nodiscard]] Result<OpenedContainer> openContainer(const Uri& uri);
+// Open steps 2-12 for one `ffmpeg` URI, the `ffmpeg` provider's OpenSteps (it runs on the I/O
+// pool): the supplier, the catalogue format, the frame rate, the query check, the colour, the
+// resolved URI and the worker (which owns the supplier, with frame 0 in its ring). `stop` ends
+// the open with Errc::Cancelled "source request cancelled": before any FFmpeg call when it is
+// already stopped, else at the polls of the scan and of frame 0.
+[[nodiscard]] Result<OpenedSource> openContainer(const Uri& uri, std::stop_token stop);
 
-// Test seam (stop test): the worker of a file opened with the same code as open (no query).
+// The worker of a file opened with the same code as open (no query); the hooks are set after the
+// open has decoded frame 0, so they see only the requests' packets.
 [[nodiscard]] Result<std::unique_ptr<AvWorker>> makeContainerWorkerForTest(
-    const std::filesystem::path& path);
+    const std::filesystem::path& path, ContainerTestHooks hooks = {});
 
 // Test seam (the single-thread TSan case): the decoder thread_count of every later open; 0 (the
 // default) lets FFmpeg choose, 1 starts no FFmpeg threads. Thread-safe.

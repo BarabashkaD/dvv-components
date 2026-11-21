@@ -1,4 +1,4 @@
-// The `ffmpeg` provider cases the M4 test-coverage review found missing (Task 11-pre):
+// More `ffmpeg` provider cases:
 // damaged containers, and the allowlisted codecs without a test before (rawvideo in AVI, MOV
 // and NUT, r210, qtrle, v410). Fixtures: tests/oracle/make-container-fixtures.cmake; the damaged
 // files are made from them at run time (no binary fixture in the repository).
@@ -77,7 +77,7 @@ std::invoke_result_t<Work&> bounded(const std::string& what, Work work) {
 }
 
 std::string formatName(const media::ISource& source) {
-    return media::descriptor(source.info().desc.format).name;
+    return media::formatDesc(source.info().desc.format).name;
 }
 
 std::shared_ptr<media::ISource> takeSource(

@@ -1,6 +1,6 @@
 #pragma once
 
-// The reference side of the FFmpeg oracle (M4 design v2 §8.1): `ffmpeg -f framemd5` output and the
+// The reference side of the FFmpeg oracle: `ffmpeg -f framemd5` output and the
 // MD5 of our own frame bytes.
 
 #include <cstddef>

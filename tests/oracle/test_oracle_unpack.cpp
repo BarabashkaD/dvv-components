@@ -1,4 +1,4 @@
-// The FFmpeg oracle for unpack (M4 design v2 §8.3, E2): for every catalogue format, our CPU unpack
+// The FFmpeg oracle for unpack: for every catalogue format, our CPU unpack
 // (unpackToPlanes) equals FFmpeg's extractplanes bit for bit.
 
 #include <doctest/doctest.h>
@@ -24,7 +24,7 @@ namespace {
 namespace media = dvv::media;
 namespace oracle = dvv::components::oracle;
 
-// Catalogue formats the oracle cannot check, each with its reason (design R2); empty: every
+// Catalogue formats the oracle cannot check, each with its reason; empty: every
 // catalogue format is covered.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 0> NOT_COVERED{};
 
@@ -85,7 +85,7 @@ void compareUnpack(oracle::OracleHarness& harness, const oracle::OracleLine& lin
     const auto found = media::findFormat(line.format);
     REQUIRE_MESSAGE(found.has_value(), "unknown format " << line.format);
     const media::FormatId format = found.value_or(media::FormatId{});
-    const media::PixelFormatDescriptor& desc = media::descriptor(format);
+    const media::PixelFormatDesc& desc = media::formatDesc(format);
     const auto geometry = media::geometry(media::unpackedFormat(format), line.width, line.height);
     REQUIRE_MESSAGE(geometry.has_value(), geometry.error().describe());
     REQUIRE(geometry->planeCount == desc.componentCount);
@@ -176,7 +176,7 @@ TEST_SUITE("oracle") {
         }
         std::set<std::string> names;
         for (const media::FormatId format : media::catalogue()) {
-            names.insert(media::descriptor(format).name);
+            names.insert(media::formatDesc(format).name);
         }
         CHECK(names.size() == 37);
         std::set<std::string> missing;

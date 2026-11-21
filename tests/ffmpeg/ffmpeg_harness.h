@@ -30,10 +30,10 @@
 
 namespace dvv::components::testing {
 
-// cpu and io pools of 4 threads, the registry (capabilities from
-// addFfmpegCapabilities(loadFfmpeg()) and every linked component), a SourceFactory and a host-only
-// FrameStore. The destructor detaches every attached source, then destroys the store, the factory,
-// the registry and the pools.
+// cpu and io pools of 4 threads, the registry (ComponentRegistry::load(): the FFmpeg module's
+// capabilities and every linked component), a SourceFactory and a host-only FrameStore. The
+// destructor detaches every attached source, then destroys the store, the factory, the registry and
+// the pools.
 class FfmpegHarness {
 public:
     FfmpegHarness();
@@ -50,10 +50,13 @@ public:
         std::string_view uri);
     // The source's origin in the store, attached on first use (once per source).
     [[nodiscard]] media::OriginId origin(const std::shared_ptr<media::ISource>& source);
-    // acquireOriginal(requireExact, HostPlanes, host) of the source's origin and a copy of the
-    // tight bytes. The store's host tier is then trimmed to 0, so the next read of any frame runs
-    // the source's produce() again (the provider's ring, seek and restart paths are what the tests
-    // check, not the store's cache).
+    // Attaches a source again after its origin was detached: the old origin is forgotten, the new
+    // one is returned and detached by the destructor.
+    [[nodiscard]] media::OriginId reattach(const std::shared_ptr<media::ISource>& source);
+    // acquireOriginal(OriginalFidelity::Exact, HostPlanes, host) of the source's origin and a copy
+    // of the tight bytes. The store's host tier is then trimmed to 0, so the next read of any frame
+    // runs the source's produce() again (the provider's ring, seek and restart paths are what the
+    // tests check, not the store's cache).
     [[nodiscard]] Result<std::vector<std::byte>> originalBytes(
         const std::shared_ptr<media::ISource>& source, std::int64_t index);
 

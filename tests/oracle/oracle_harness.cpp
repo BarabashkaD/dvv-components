@@ -23,6 +23,7 @@
 #include "dvv/base/executors.h"
 #include "dvv/base/task.h"
 #include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/media/frame.h"
 #include "dvv/media/frame_store.h"
 #include "dvv/media/source.h"
@@ -36,12 +37,6 @@ namespace dvv::components::oracle {
 namespace {
 
 constexpr std::size_t POOL_THREADS = 2;
-
-// UTF-8 with '/' separators (URIs and messages).
-std::string genericUtf8(const std::filesystem::path& path) {
-    const std::u8string text = path.generic_u8string();
-    return {text.begin(), text.end()};
-}
 
 std::string readText(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
@@ -81,14 +76,14 @@ std::optional<std::filesystem::path> oracleFixtureDirectory() {
     if (root.empty()) {
         return std::nullopt;
     }
-    std::string text = readText(media::pathFromUtf8(root) / "current.txt");
+    std::string text = readText(dvv::pathFromText(root) / "current.txt");
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.pop_back();
     }
     if (text.empty()) {
         return std::nullopt;
     }
-    std::filesystem::path directory = media::pathFromUtf8(text);
+    std::filesystem::path directory = dvv::pathFromText(text);
     std::error_code error;
     if (!std::filesystem::is_regular_file(directory / "done.stamp", error)) {
         return std::nullopt;
@@ -101,7 +96,8 @@ std::vector<OracleLine> readManifest() {
     REQUIRE_MESSAGE(found.has_value(), "no oracle fixtures (DVV_ORACLE_FIXTURES)");
     const std::filesystem::path directory = found.value_or(std::filesystem::path{});
     const std::string text = readText(directory / "manifest.txt");
-    REQUIRE_MESSAGE(!text.empty(), "empty or missing " << genericUtf8(directory / "manifest.txt"));
+    REQUIRE_MESSAGE(!text.empty(),
+                    "empty or missing " << dvv::pathDisplayText(directory / "manifest.txt"));
     std::vector<OracleLine> lines;
     for (std::string_view row : split(text, '\n')) {
         if (!row.empty() && row.back() == '\r') {
@@ -145,16 +141,16 @@ std::filesystem::path oracleFile(std::string_view name) {
     const auto found = oracleFixtureDirectory();
     REQUIRE_MESSAGE(found.has_value(), "no oracle fixtures (DVV_ORACLE_FIXTURES)");
     const std::filesystem::path path =
-        found.value_or(std::filesystem::path{}) / media::pathFromUtf8(name);
+        found.value_or(std::filesystem::path{}) / dvv::pathFromText(name);
     std::error_code error;
     REQUIRE_MESSAGE(std::filesystem::is_regular_file(path, error),
-                    "missing fixture " << genericUtf8(path));
+                    "missing fixture " << dvv::pathDisplayText(path));
     return path;
 }
 
 std::vector<std::byte> readOracleFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
-    REQUIRE_MESSAGE(file.good(), "cannot read " << genericUtf8(path));
+    REQUIRE_MESSAGE(file.good(), "cannot read " << dvv::pathDisplayText(path));
     const std::string text((std::istreambuf_iterator<char>(file)),
                            std::istreambuf_iterator<char>());
     const auto* data = reinterpret_cast<const std::byte*>(text.data());
@@ -162,7 +158,7 @@ std::vector<std::byte> readOracleFile(const std::filesystem::path& path) {
 }
 
 std::string clipUri(const OracleLine& line) {
-    return std::format("file:{}?fmt={}&size={}x{}&impl=raw", genericUtf8(oracleFile(line.file)),
+    return std::format("file:{}?fmt={}&size={}x{}&impl=raw", dvv::pathText(oracleFile(line.file)),
                        line.format, line.width, line.height);
 }
 
@@ -212,10 +208,13 @@ Result<std::vector<std::byte>> OracleHarness::originalBytes(std::string_view uri
     DVV_TRY(const media::OriginId id, origin(uri));
     Result<std::vector<std::byte>> bytes;
     {
-        auto read = syncWait(store_->acquireOriginal({id, index}, media::Api::HostPlanes,
-                                                     store_->hostDomain(), *cpu_, true));
+        auto read = syncWait(store_->acquireOriginal({id, index},
+                                                     {.api = media::Api::HostPlanes,
+                                                      .domain = store_->hostDomain(),
+                                                      .fidelity = media::OriginalFidelity::Exact},
+                                                     *cpu_));
         if (read) {
-            const auto* planes = std::get_if<media::HostPlanesB>(&read->lease().binding());
+            const auto* planes = read->lease().planes();
             REQUIRE(planes != nullptr);
             std::vector<std::byte> copy;
             for (std::size_t p = 0; p < planes->planeCount; ++p) {

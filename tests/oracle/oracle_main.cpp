@@ -9,7 +9,7 @@
 #include "oracle/oracle_harness.h"
 
 // The oracle needs the fixtures of oracle/make-fixtures.cmake, which exist only when the prefix has
-// the ffmpeg program (design v2 §3): without them the executable exits 77 (skipped) unless
+// the ffmpeg program: without them the executable exits 77 (skipped) unless
 // DVV_REQUIRE_FFMPEG=1, which makes it a failure.
 int main(int argc, char** argv) {
     dvv::LifetimeRegistry::instance().setDetailed(true);

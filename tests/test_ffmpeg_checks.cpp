@@ -1,60 +1,85 @@
-// The FFmpeg binding's pure parts (M4 design D3, §7): library checks, search plan, file names and
+// The FFmpeg binding's pure parts: library checks, search plan, file names and
 // the AVERROR mapping, without FFmpeg loaded.
 
 #include <doctest/doctest.h>
 
+#include <atomic>
 #include <cerrno>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <optional>
+#include <stop_token>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "dvv/base/error.h"
+#include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/media/types.h"
 #include "dvv/registry/capabilities.h"
+#include "dvv/registry/module.h"
+#include "dvv/registry/parameters.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
+#include "sources/av_worker.h"
+#include "sources/ffmpeg_module.h"
 
 namespace {
 
 using dvv::components::FfmpegLoadOptions;
 using dvv::components::FfmpegStatus;
-using dvv::components::detail::LibraryFacts;
-using dvv::components::detail::libraryFileName;
+using dvv::components::detail::LibraryInfo;
+using dvv::components::detail::moduleLoadOf;
+using dvv::components::detail::moduleOptions;
 using dvv::components::detail::planSearch;
 using dvv::components::detail::refusalReason;
 using dvv::components::detail::SearchSource;
 using dvv::components::detail::sourceName;
 using dvv::components::detail::versionText;
 
+// The old name stays until 1.0.0.
+static_assert(
+    std::is_same_v<dvv::components::detail::LibraryFacts, dvv::components::detail::LibraryInfo>);
+
 constexpr unsigned v(unsigned major, unsigned minor, unsigned micro) {
     return (major << 16) | (minor << 8) | micro;
 }
 
-std::vector<LibraryFacts> facts() {
-    std::vector<LibraryFacts> libraries;
+std::vector<LibraryInfo> facts() {
+    std::vector<LibraryInfo> libraries;
     for (const char* name :
          {"avutil", "avcodec", "avformat", "swscale", "swresample", "avfilter"}) {
         libraries.push_back(
-            LibraryFacts{.name = name,
-                         .runtimeVersion = v(60, 8, 100),
-                         .compiledVersion = v(60, 8, 100),
-                         .licence = "LGPL version 2.1 or later",
-                         .configuration = "--prefix=/x --enable-shared --disable-static"});
+            LibraryInfo{.name = name,
+                        .runtimeVersion = v(60, 8, 100),
+                        .compiledVersion = v(60, 8, 100),
+                        .licence = "LGPL version 2.1 or later",
+                        .configuration = "--prefix=/x --enable-shared --disable-static"});
     }
     return libraries;
 }
 
-LibraryFacts& library(std::vector<LibraryFacts>& libraries, const std::string& name) {
-    for (LibraryFacts& entry : libraries) {
+LibraryInfo& library(std::vector<LibraryInfo>& libraries, const std::string& name) {
+    for (LibraryInfo& entry : libraries) {
         if (entry.name == name) {
             return entry;
         }
     }
     FAIL("no library " << name);
     return libraries.front();
+}
+
+// Both FFmpeg capabilities, in the module's produces order.
+std::vector<std::string> bothCapabilities() {
+    return {std::string(dvv::components::FFMPEG_CAPABILITY),
+            std::string(dvv::components::FFMPEG_LAVFI_CAPABILITY)};
+}
+
+// The property the module adds when DVV_FFMPEG_DIR chose the folder.
+dvv::ModuleProperty variableProperty() {
+    return dvv::ModuleProperty{.key = std::string(dvv::MODULE_VARIABLE_PROPERTY),
+                               .value = "DVV_FFMPEG_DIR"};
 }
 
 // An absolute directory on this platform.
@@ -87,42 +112,43 @@ TEST_CASE("refusalReason: a GPL or nonfree build is refused") {
         auto libraries = facts();
         library(libraries, "swscale").licence = "GPL version 2 or later";
         CHECK(refusalReason(libraries) ==
-              "is a GPL build (swscale: GPL version 2 or later); rawreel uses only LGPL builds");
+              "is a GPL build (swscale: GPL version 2 or later); only LGPL builds are accepted");
     }
     {
         auto libraries = facts();
         library(libraries, "avcodec").licence = "nonfree and unredistributable";
         CHECK(refusalReason(libraries) ==
               "is not an LGPL build (avcodec: nonfree and "
-              "unredistributable); rawreel uses only LGPL builds");
+              "unredistributable); only LGPL builds are accepted");
     }
     {
         auto libraries = facts();
         library(libraries, "avformat").configuration = "--enable-shared --enable-gpl";
         CHECK(refusalReason(libraries) ==
               "is a GPL build (avformat configured with --enable-gpl); "
-              "rawreel uses only LGPL builds");
+              "only LGPL builds are accepted");
     }
     {
         auto libraries = facts();
         library(libraries, "avfilter").configuration = "--enable-nonfree";
         CHECK(refusalReason(libraries) ==
-              "is a nonfree build (avfilter configured with --enable-nonfree); rawreel uses only "
-              "LGPL builds");
+              "is a nonfree build (avfilter configured with --enable-nonfree); only LGPL builds "
+              "are accepted");
     }
 }
 
 TEST_CASE("refusalReason: versions must match the headers") {
     auto libraries = facts();
-    LibraryFacts& avformat = library(libraries, "avformat");
+    LibraryInfo& avformat = library(libraries, "avformat");
     avformat.compiledVersion = v(62, 3, 100);
     avformat.runtimeVersion = v(61, 3, 100);
-    CHECK(refusalReason(libraries) ==
-          "has avformat 61.3.100, but rawreel was built for 62.3.100 (the major version must "
-          "match)");
+    CHECK(
+        refusalReason(libraries) ==
+        "has avformat 61.3.100, but dvv-components was built for 62.3.100 (the major version must "
+        "match)");
     avformat.runtimeVersion = v(62, 2, 100);
     CHECK(refusalReason(libraries) ==
-          "has avformat 62.2.100, older than the 62.3.100 rawreel was built for");
+          "has avformat 62.2.100, older than the 62.3.100 dvv-components was built for");
     avformat.runtimeVersion = v(62, 4, 0);
     CHECK(refusalReason(libraries) == std::nullopt);
     avformat.runtimeVersion = v(62, 3, 99);
@@ -134,7 +160,7 @@ TEST_CASE("refusalReason: the first problem in order is reported") {
     library(libraries, "avutil").runtimeVersion = v(60, 7, 100);
     library(libraries, "swscale").licence = "GPL version 2 or later";
     CHECK(refusalReason(libraries) ==
-          "has avutil 60.7.100, older than the 60.8.100 rawreel was built for");
+          "has avutil 60.7.100, older than the 60.8.100 dvv-components was built for");
 }
 
 TEST_CASE("planSearch: explicit directories are final and must be absolute") {
@@ -152,7 +178,7 @@ TEST_CASE("planSearch: explicit directories are final and must be absolute") {
         CHECK(plan.error == "the FFmpeg directory must be absolute (got 'ffmpeg')");
     }
     {
-        const auto plan = planSearch(FfmpegLoadOptions{}, dvv::media::utf8FromPath(a), "");
+        const auto plan = planSearch(FfmpegLoadOptions{}, dvv::pathText(a), "");
         CHECK(plan.directories == std::vector<std::filesystem::path>{a});
         CHECK(plan.source == SearchSource::Environment);
         CHECK(plan.error.empty());
@@ -166,6 +192,35 @@ TEST_CASE("planSearch: explicit directories are final and must be absolute") {
     CHECK(sourceName(SearchSource::Environment) == "DVV_FFMPEG_DIR");
     CHECK(sourceName(SearchSource::Default) == "default search");
 }
+
+#if !defined(_WIN32)
+TEST_CASE("planSearch keeps a non-UTF-8 DVV_FFMPEG_DIR") {
+    // A POSIX path is bytes; the search keeps them, and the messages show U+FFFD for them.
+    const auto kept = planSearch({},
+                                 "/tmp/a\xFF"
+                                 "b",
+                                 "");
+    CHECK(kept.directories.size() == 1);
+    if (!kept.directories.empty()) {
+        CHECK(kept.directories.front().native().find('\xFF') != std::string::npos);
+    }
+    const auto relative = planSearch({},
+                                     "a\xFF"
+                                     "b",
+                                     "");
+    CHECK(relative.error ==
+          "DVV_FFMPEG_DIR must be absolute (got 'a\xEF\xBF\xBD"
+          "b')");
+    FfmpegLoadOptions options;
+    options.directory = dvv::pathFromText(
+        "a\xFF"
+        "b");
+    const auto given = planSearch(options, std::nullopt, "");
+    CHECK(given.error ==
+          "the FFmpeg directory must be absolute (got 'a\xEF\xBF\xBD"
+          "b')");
+}
+#endif
 
 TEST_CASE("planSearch: the default search looks next to the executable") {
     const std::filesystem::path a = absoluteDirectory();
@@ -191,21 +246,11 @@ TEST_CASE("planSearch: the default search looks next to the executable") {
     CHECK(plan.error.empty());
 }
 
-TEST_CASE("libraryFileName and versionText") {
-#if defined(_WIN32)
-    CHECK(libraryFileName("avutil", 60) == "avutil-60.dll");
-    CHECK(libraryFileName("swresample", 6) == "swresample-6.dll");
-#elif defined(__APPLE__)
-    CHECK(libraryFileName("avutil", 60) == "libavutil.60.dylib");
-    CHECK(libraryFileName("swresample", 6) == "libswresample.6.dylib");
-#else
-    CHECK(libraryFileName("avutil", 60) == "libavutil.so.60");
-    CHECK(libraryFileName("swresample", 6) == "libswresample.so.6");
-#endif
+TEST_CASE("versionText") {
     CHECK(versionText(v(62, 3, 100)) == "62.3.100");
 }
 
-TEST_CASE("errcForAverror maps the codes of the design") {
+TEST_CASE("errcForAverror maps the documented codes") {
     using dvv::Errc;
     using dvv::components::ffmpeg::errcForAverror;
     CHECK(errcForAverror(AVERROR(ENOMEM)) == Errc::OutOfMemory);
@@ -249,4 +294,168 @@ TEST_CASE("addFfmpegCapabilities follows the status") {
         addFfmpegCapabilities(status, caps);
         CHECK(caps.names() == std::vector<std::string>{"ffmpeg", "ffmpeg.lavfi"});
     }
+}
+
+TEST_CASE("moduleLoadOf maps the status") {
+    FfmpegStatus status;
+    status.reason = "r";
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Default);
+        CHECK(module_load.provides.empty());
+        CHECK(module_load.reason == "r");
+        CHECK(module_load.properties.empty());
+        CHECK(module_load.handle == nullptr);
+    }
+    {
+        // The variable property also on a failure.
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Environment);
+        CHECK(module_load.provides.empty());
+        CHECK(module_load.reason == "r");
+        CHECK(module_load.properties == std::vector{variableProperty()});
+        CHECK(module_load.handle == nullptr);
+    }
+
+    status.core = true;
+    status.version = "n8.1.3";
+    status.licence = "LGPL version 2.1 or later";
+    status.directory = dvv::pathFromText("/opt/ffmpeg");
+    status.reason = "lavfi off";
+    std::vector<dvv::ModuleProperty> properties{
+        dvv::ModuleProperty{.key = std::string(dvv::MODULE_VERSION_PROPERTY), .value = "n8.1.3"},
+        dvv::ModuleProperty{.key = std::string(dvv::MODULE_LICENCE_PROPERTY),
+                            .value = "LGPL version 2.1 or later"},
+        dvv::ModuleProperty{.key = std::string(dvv::MODULE_DIRECTORY_PROPERTY),
+                            .value = dvv::pathText(status.directory)},
+    };
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Default);
+        CHECK(module_load.provides ==
+              std::vector<std::string>{std::string(dvv::components::FFMPEG_CAPABILITY)});
+        CHECK(module_load.reason == "lavfi off");
+        CHECK(module_load.properties == properties);
+        CHECK(module_load.handle == nullptr);
+    }
+
+    status.lavfi = true;
+    status.reason.clear();
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Options);
+        CHECK(module_load.provides == bothCapabilities());
+        CHECK(module_load.reason.empty());
+        CHECK(module_load.properties == properties);
+        CHECK(module_load.handle == nullptr);
+    }
+    properties.push_back(variableProperty());
+    {
+        const dvv::ModuleLoad module_load = moduleLoadOf(status, SearchSource::Environment);
+        CHECK(module_load.provides == bothCapabilities());
+        CHECK(module_load.reason.empty());
+        CHECK(module_load.properties == properties);
+        CHECK(module_load.handle == nullptr);
+    }
+}
+
+TEST_CASE("moduleOptions reads the directory and refuses the rest") {
+    const std::string directory_option(dvv::components::FFMPEG_DIRECTORY_OPTION);
+    {
+        const auto parsed = moduleOptions(dvv::ParameterValues{});
+        CHECK(parsed.has_value());
+        if (parsed) {
+            CHECK_FALSE(parsed->directory.has_value());
+        }
+    }
+    {
+        const auto parsed =
+            moduleOptions(dvv::ParameterValues{{directory_option, std::string("/opt/ffmpeg")}});
+        CHECK(parsed.has_value());
+        if (parsed) {
+            CHECK(parsed->directory == std::optional{dvv::pathFromText("/opt/ffmpeg")});
+        }
+    }
+    {
+        const auto parsed =
+            moduleOptions(dvv::ParameterValues{{directory_option, std::int64_t{1}}});
+        CHECK_FALSE(parsed.has_value());
+        if (!parsed) {
+            CHECK(parsed.error() == "option 'directory' must be text (a folder)");
+        }
+    }
+    {
+        const auto parsed = moduleOptions(dvv::ParameterValues{{"folder", std::string("x")}});
+        CHECK_FALSE(parsed.has_value());
+        if (!parsed) {
+            CHECK(parsed.error() ==
+                  "unknown option 'folder' (the FFmpeg module takes 'directory')");
+        }
+    }
+    {
+        // An empty folder is kept; planSearch refuses it as relative (no default search).
+        const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, std::string()}});
+        CHECK(parsed.has_value());
+        if (parsed) {
+            CHECK(parsed->directory == std::optional{std::filesystem::path{}});
+            const auto plan = planSearch(*parsed, std::nullopt, dvv::pathFromText("/opt/app"));
+            CHECK(plan.error == "the FFmpeg directory must be absolute (got '')");
+            CHECK(plan.directories.empty());
+        }
+    }
+#if !defined(_WIN32)
+    {
+        // The folder is path text: a byte that is not UTF-8 stays.
+        const std::string folder_text = std::string(
+            "/tmp/a\xFF"
+            "b");
+        const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, folder_text}});
+        CHECK(parsed.has_value());
+        CHECK((parsed && parsed->directory.has_value()));
+        if (parsed) {
+            const std::optional<std::filesystem::path> directory = parsed->directory;
+            if (directory) {
+                CHECK(dvv::pathText(*directory) == folder_text);
+            }
+        }
+    }
+#endif
+}
+
+TEST_CASE("averrorText without FFmpeg loaded is empty") {
+    CHECK_FALSE(dvv::components::ffmpeg::averrorText(-22).has_value());
+}
+
+TEST_CASE("StopCheck: the token gives Cancelled, the flag and the generation give source closed") {
+    using dvv::Errc;
+    using dvv::components::detail::StopCheck;
+    const std::uint64_t gen = dvv::components::ffmpeg::stopGeneration();
+    std::stop_source source;
+    source.request_stop();
+    const std::stop_token stopped = source.get_token();
+    const std::atomic<bool> set{true};
+
+    const StopCheck running{.flag = nullptr, .generation = gen, .token = {}};
+    CHECK_FALSE(running());
+
+    const StopCheck token_only{.flag = nullptr, .generation = gen, .token = stopped};
+    CHECK(token_only());
+    CHECK(token_only.error().code == Errc::Cancelled);
+    CHECK(token_only.error().message == "source request cancelled");
+
+    const StopCheck flag_only{.flag = &set, .generation = gen, .token = {}};
+    CHECK(flag_only());
+    CHECK(flag_only.error().code == Errc::Internal);
+    CHECK(flag_only.error().message == "source closed");
+
+    const StopCheck generation_only{.flag = nullptr, .generation = gen + 1, .token = {}};
+    CHECK(generation_only());
+    CHECK(generation_only.error().code == Errc::Internal);
+    CHECK(generation_only.error().message == "source closed");
+
+    const StopCheck flag_and_token{.flag = &set, .generation = gen, .token = stopped};
+    CHECK(flag_and_token());
+    CHECK(flag_and_token.error().code == Errc::Cancelled);
+    CHECK(flag_and_token.error().message == "source request cancelled");
+
+    const StopCheck generation_and_token{.flag = nullptr, .generation = gen + 1, .token = stopped};
+    CHECK(generation_and_token());
+    CHECK(generation_and_token.error().code == Errc::Cancelled);
+    CHECK(generation_and_token.error().message == "source request cancelled");
 }

@@ -1,4 +1,4 @@
-// The framemd5 parser of the FFmpeg oracle (M4 design v2 §8.1), without FFmpeg.
+// The framemd5 parser of the FFmpeg oracle, without FFmpeg.
 
 #include <doctest/doctest.h>
 

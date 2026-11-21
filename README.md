@@ -1,6 +1,6 @@
 # dvv-components
 
-Component libraries of the dvv stack used by rawreel: the FFmpeg component (source providers
+Component libraries of the dvv stack: the FFmpeg component (source providers
 `ffmpeg` and `lavfi`). C++23; depends on
 [dvv-base](https://github.com/BarabashkaD/dvv-base),
 [dvv-registry](https://github.com/BarabashkaD/dvv-registry),
@@ -10,17 +10,17 @@ Component libraries of the dvv stack used by rawreel: the FFmpeg component (sour
 
 ## Build
 
-Builds and tests on Windows (Visual Studio 2026) and Linux (Clang 19 with libstdc++ 14) with
-[dvv-build](https://github.com/BarabashkaD/dvv-build), which provides the presets, the shared CMake
-modules, the third-party dependencies (including FFmpeg's headers and shared libraries) and the CI
-workflow; its README lists the prerequisites. dvv-build is cloned next to dvv-components at the
-version of the `dvv-build` line in `dvv-deps.txt`; `fetch-deps.cmake` clones dvv-base,
-dvv-registry, dvv-platform, dvv-gpu and dvv-media next to them at their minimum versions from the
-same file:
+Builds and tests on Windows (Visual Studio 2026), Linux (Clang 19 with libstdc++ 14) and macOS
+(Xcode on Apple Silicon) with [dvv-build](https://github.com/BarabashkaD/dvv-build), which provides
+the presets, the shared CMake modules, the third-party dependencies (including FFmpeg's headers and
+shared libraries) and the CI workflow; its README lists the prerequisites. dvv-build is cloned next
+to dvv-components at the version of the `dvv-build` line in `dvv-deps.txt`; `fetch-deps.cmake`
+clones dvv-base, dvv-registry, dvv-platform, dvv-gpu and dvv-media next to them at their minimum
+versions from the same file:
 
 ```powershell
 git clone https://github.com/BarabashkaD/dvv-components
-git clone --branch v0.4.2 https://github.com/BarabashkaD/dvv-build
+git clone --branch v0.5.1 https://github.com/BarabashkaD/dvv-build
 python -m pip install -r dvv-build/tools/requirements.txt
 cmake -DREPO=dvv-components -P dvv-build/tools/fetch-deps.cmake
 ./dvv-build/bootstrap.ps1
@@ -33,63 +33,71 @@ Applications use dvv-components as a git submodule in their `libs/` folder, next
 
 ## Linking
 
-An application links the umbrella target `dvv::components` and calls `dvv_components_link()`,
-which links every enabled component library as a whole archive:
+An application links the umbrella target `dvv::components` and calls
+`dvv_link_enabled_components()`, which links every enabled component library as a whole archive,
+so its components and modules register:
 
-```cmake
-find_package(dvv_components 0.1 REQUIRED)   # or dvv_components in-tree
-target_link_libraries(my_app PRIVATE dvv::components)
-dvv_components_link(my_app)
-```
+    find_package(dvv_components 0.3 REQUIRED)   # or dvv_components in-tree
+    target_link_libraries(my_app PRIVATE dvv::components)
+    dvv_link_enabled_components(my_app)
+
+`dvv_components_link()` is the 0.2 name; it is deprecated and removed in 1.0.0.
 
 ## Adding a component
 
-Declare the library in the top-level `CMakeLists.txt` at the marked place, before the install rules
-and the tests, with `dvv_add_component()` from `cmake/DvvComponent.cmake`
-(`${DVV_COMPONENTS_CMAKE_DIR}/DvvComponent.cmake` for higher repositories):
-
-```cmake
-dvv_add_component(<id> KIND <Kind> SOURCES <file>... [LINK <target>...]
-                  [REGISTERS <component id>...])
-```
+    dvv_add_component(<id> SOURCES <file>... [LINK <target>...] [REGISTERS <component id>...])
 
 - It adds the option `DVV_COMPONENT_<ID>` (default `ON`). When on, it builds the static library
   `dvv_component_<id>` (alias `dvv::component_<id>`), linking `dvv::media` publicly and the `LINK`
   targets privately.
-- `<id>` matches `[a-z][a-z0-9_]*`; `KIND` is a `dvv::Kind` name (`Source`, `FormatDetector`,
-  `Exporter`, `Tool`, `Metric`, `Analyser`, `Processor`).
-- `REGISTERS` (default `<id>`) lists the component ids the library registers, each matching
-  `[a-z][a-z0-9_.-]*` and registered once across all libraries. The conformance test
-  (`tests/test_conformance.cpp`) checks that the registry holds exactly these ids with their kinds,
-  plus the source providers of `dvv::media_sources` (`raw`, `synthetic`, `y4m`).
+- `<id>` matches `[a-z][a-z0-9_]*`. `REGISTERS` (default `<id>`) lists the component ids the
+  library registers, each matching `[a-z][a-z0-9_.-]*` and registered once across all libraries.
+  The conformance test checks that the registry holds exactly these ids, plus the source
+  providers of `dvv::media_sources` (`raw`, `synthetic`, `y4m`).
+- Each component id is recorded in the global property `DVV_COMPONENTS_IDS`.
+- A component's category is the interface it registers for. `KIND` and the global property
+  `DVV_COMPONENTS_REGISTERS` (`<component id>=<Kind>`, `Source` when `KIND` is not given) are
+  deprecated and removed in 1.0.0.
 
 Every component class is `final`, derives `dvv::Managed<T>`, has the constructor
-`(dvv::CreationKey<dvv::ComponentRegistry>, const dvv::ParameterValues&)` and static `info()`,
-`schema()` and `probe()`. Its constructor neither calls FFmpeg nor does I/O. Add any new capability
-a component probes for to `ALL_CAPABILITIES` in the conformance test.
+`(dvv::CreationKey<dvv::ComponentRegistry>)` and static `info()` and `probe()`. Its constructor
+neither calls FFmpeg nor does I/O. A component probes for capability constants (such as
+`FFMPEG_CAPABILITY`), never for literals; add a new one to `ALL_CAPABILITIES` in the conformance
+test.
 
 ## FFmpeg
 
-FFmpeg is loaded at run time and never linked. `dvv/components/ffmpeg.h` (target `dvv::ffmpeg`,
-part of `dvv::components`) reports the status without FFmpeg types; `loadFfmpeg()` loads once per
-process and never unloads.
+FFmpeg is loaded at run time and never linked. The `ffmpeg` component library registers the module
+`ffmpeg` (`FFMPEG_MODULE`): `dvv::ComponentRegistry::load()` loads FFmpeg once per process, never
+unloads it, and adds the capabilities `ffmpeg` (`FFMPEG_CAPABILITY`: avutil, avcodec, avformat,
+swscale, swresample) and `ffmpeg.lavfi` (`FFMPEG_LAVFI_CAPABILITY`: also avfilter) as far as they
+are available. `registry.module(FFMPEG_MODULE)` is the status: what is withheld and why, and the
+properties `version`, `licence` and `directory` (present only when the core capability is provided)
+and `variable` (present only when `DVV_FFMPEG_DIR` chose the folder). The reason and the `directory`
+property may hold a folder of the user's machine: the reason shows it as `dvv::pathDisplayText`,
+the property is `dvv::pathText` (`dvv::pathFromText` gives the folder back).
 
 - It opens the six libraries of an LGPL shared build (`avutil`, `swresample`, `swscale`,
   `avcodec`, `avformat`, `avfilter`), each with its dependencies taken only from the library's own
-  folder, the application folder and System32. FFmpeg's headers are used only inside
+  folder, the application folder and System32 (Windows). FFmpeg's headers are used only inside
   dvv-components.
-- Each library's major version must equal the one rawreel was built with and its minor version
-  must not be older; the licence must be LGPL, without `--enable-gpl` or `--enable-nonfree`. A
-  failure leaves FFmpeg off with the reason in `FfmpegStatus::reason`.
-- Search order: `DVV_FFMPEG_DIR` (an absolute path; final; an empty value counts as unset); else
-  `<exe dir>/ffmpeg`, then `<exe dir>/../lib/ffmpeg`. The first default folder that contains the
-  avutil library is final too.
-- Capabilities (`addFfmpegCapabilities()`): `ffmpeg` (avutil, avcodec, avformat, swscale,
-  swresample) and `ffmpeg.lavfi` (also avfilter).
+- Each library's major version must equal the one dvv-components was built with and its minor
+  version must not be older; the licence must be LGPL, without `--enable-gpl` or
+  `--enable-nonfree`. A failure withholds the capabilities, with the reason.
+- Search order: the module option `directory` (`FFMPEG_DIRECTORY_OPTION`, an absolute folder;
+  final); else `DVV_FFMPEG_DIR` (an absolute path; final; an empty value counts as unset); else
+  `<exe dir>/ffmpeg`, then `<exe dir>/../lib/ffmpeg`, and on macOS
+  `<exe dir>/../Frameworks/ffmpeg` (an app bundle). The first default folder that contains the
+  avutil library is final too. The first load of the process decides; later loads report the same
+  result.
+- The sources stop through dvv-media: detaching an origin, or stopping the open's token, ends
+  their work with `Errc::Cancelled`.
 - FFmpeg's log goes to the dvv log as warnings; nothing goes to stderr. AVERROR codes map to dvv
   errors (`Io`, `Format`, `Unsupported`, `OutOfMemory`, else `Internal`).
 - `dvv_check_no_ffmpeg_imports(<test name> <target>...)` adds a test that fails when a binary
   imports an FFmpeg library.
+- Deprecated (removed in 1.0.0): `loadFfmpeg()`, `addFfmpegCapabilities()`, `FfmpegStatus`,
+  `FfmpegLoadOptions` and `stopFfmpegSources()`.
 
 ## The `ffmpeg` component
 
@@ -110,8 +118,8 @@ The component library `dvv_component_ffmpeg` registers two source providers:
   tag (or, without primaries, the matrix tag) tells PAL from NTSC. A tag that is signalled but
   fits no standard (e.g. SMPTE 240M) leaves its field unspecified (a missing field is shown with
   BT.709's value) and sets the source's colour hint, so the stream is labelled as having no
-  standard; a note "signalled but non-standard (P/T/M = x/y/z)" names the codes. rawreel writes
-  the notes to its Log.
+  standard; a note "signalled but non-standard (P/T/M = x/y/z)" names the codes. The notes are in
+  `SourceInfo::notes`.
 - `lavfi` (capability `ffmpeg.lavfi`): `lavfi:<graph>` URIs, one chain with one output. Every filter
   must be on `LAVFI_ALLOWED_FILTERS` (`src/sources/ffmpeg_rules.h`: generators and one-in, one-out
   video filters); any other is `Unsupported` "lavfi: filter <name> is not supported", with
@@ -127,6 +135,7 @@ Decoded frames are copied into catalogue formats; a decoder output format outsid
 | --- | --- | --- |
 | `dvv_components.unit` | `sanity` | the rules without FFmpeg |
 | `dvv_components.ffmpeg`, `.ffmpeg_absent`, `.ffmpeg_relative` | `ffmpeg` | the loader and both providers against FFmpeg's own output; a missing FFmpeg; a relative `DVV_FFMPEG_DIR` |
+| `dvv_components.ffmpeg_single_thread` | `ffmpeg` | a decode whose decoders start no FFmpeg threads, so the thread sanitizer checks our own threading without suppressions |
 | `dvv_components.oracle` | `ffmpeg;oracle` | unpacked frames and the display colour against FFmpeg's output |
 | `dvv_components.ffmpeg_fixtures`, `.lavfi_fixtures`, `.oracle_fixtures` | `ffmpeg` (`ffmpeg;oracle` for the oracle fixtures) | make the fixtures in the build tree (never committed) |
 | `dvv_components.no_ffmpeg_imports` (+ `_selftest`), `.cmake_functions`, `.compile_fail.*` | | no binary imports FFmpeg; the CMake functions; compile-time rules |

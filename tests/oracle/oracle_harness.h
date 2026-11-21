@@ -1,6 +1,6 @@
 #pragma once
 
-// The FFmpeg oracle (M4 design v2 §8.3, Task 6): the fixtures of oracle/make-fixtures.cmake and a
+// The FFmpeg oracle: the fixtures of oracle/make-fixtures.cmake and a
 // host-only reader of their clips through the raw provider. No FFmpeg library is loaded.
 
 #include <cstddef>

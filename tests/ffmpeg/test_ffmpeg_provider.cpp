@@ -1,5 +1,5 @@
-// The `ffmpeg` source provider against `ffmpeg -f framemd5` (M4 Task 5a; design v2 §4.4, §5.4, D5,
-// D28; v1.0 codec scope). Fixtures: tests/oracle/make-container-fixtures.cmake.
+// The `ffmpeg` source provider against `ffmpeg -f framemd5`.
+// Fixtures: tests/oracle/make-container-fixtures.cmake.
 
 #include <doctest/doctest.h>
 
@@ -13,6 +13,7 @@
 #include <optional>
 #include <random>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -21,11 +22,13 @@
 #include <vector>
 
 #include "dvv/base/error.h"
+#include "dvv/base/executor.h"
 #include "dvv/base/executors.h"
 #include "dvv/base/lifetime.h"
 #include "dvv/base/log.h"
 #include "dvv/base/task.h"
 #include "dvv/base/uri.h"
+#include "dvv/base/utf8.h"
 #include "dvv/base/when_all.h"
 #include "dvv/components/ffmpeg.h"
 #include "dvv/media/frame_store.h"
@@ -42,6 +45,7 @@
 namespace {
 
 namespace media = dvv::media;
+namespace detail = dvv::components::detail;
 using dvv::components::testing::FfmpegHarness;
 using dvv::components::testing::fixture;
 using dvv::components::testing::fixturePath;
@@ -53,7 +57,7 @@ using dvv::components::testing::TemporaryDirectory;
 
 using namespace std::chrono_literals;
 
-constexpr std::string_view SEQ = "seq.mkv";    // Task 0: FFV1 in MKV with pairs of equal pts
+constexpr std::string_view SEQ = "seq.mkv";    // FFV1 in MKV with pairs of equal pts
 constexpr std::string_view LONG = "long.mkv";  // 3000 frames, Sequential like SEQ
 
 // The FFV1/MKV formats of make-container-fixtures.cmake (gbrp is FFVHuff in the same name).
@@ -63,7 +67,7 @@ constexpr std::array<std::string_view, 18> FFV1_FORMATS{
     "yuv444p12le", "yuv420p16le", "yuv444p16le", "gbrp",        "gbrp10le",    "gbrp16le"};
 
 std::string formatName(const media::ISource& source) {
-    return media::descriptor(source.info().desc.format).name;
+    return media::formatDesc(source.info().desc.format).name;
 }
 
 // The MD5 of frame `index` of `source`; fails the test when it cannot be read.
@@ -179,6 +183,32 @@ dvv::components::detail::StopCheck running() {
     return {.flag = nullptr, .generation = dvv::components::ffmpeg::stopGeneration()};
 }
 
+// The MD5s of frames first..first+count-1, fetched one by one with no token (an empty string for a
+// failed fetch).
+std::vector<std::string> fetchHashes(detail::AvWorker& worker, dvv::IExecutor& io,
+                                     std::int64_t first, int count) {
+    std::vector<std::string> hashes;
+    for (std::int64_t index = first; index < first + count; ++index) {
+        std::vector<std::byte> bytes;
+        const dvv::Result<void> fetched = dvv::syncWait(worker.fetch(index, io, {}, &bytes));
+        CHECK_MESSAGE(
+            fetched.has_value(),
+            "frame " << index << ": " << (fetched ? std::string() : fetched.error().describe()));
+        hashes.push_back(fetched ? md5Hex(bytes) : std::string());
+    }
+    return hashes;
+}
+
+// The reference MD5s of frames first..first+count-1.
+std::vector<std::string> referenceRange(
+    const std::vector<dvv::components::testing::FrameHash>& hashes, std::int64_t first, int count) {
+    std::vector<std::string> values;
+    for (std::int64_t index = first; index < first + count; ++index) {
+        values.push_back(hashes.at(static_cast<std::size_t>(index)).md5);
+    }
+    return values;
+}
+
 // Field by field, so a failure names the field.
 void checkColour(const media::ColourParams& actual, const media::ColourParams& expected) {
     CHECK(static_cast<int>(actual.matrix) == static_cast<int>(expected.matrix));
@@ -231,6 +261,15 @@ TEST_SUITE("ffmpeg") {
         checkFrames(harness, source, SEQ, hashes, order);
     }
 
+    TEST_CASE("ffmpeg: a container source fixes format, size and rate") {
+        FfmpegHarness harness;
+        const auto source = harness.open(fixtureUri(SEQ));
+        CHECK(source);
+        if (source) {
+            CHECK(source->info().fixed == media::FixedFields::all());
+        }
+    }
+
     TEST_CASE("ffmpeg: seek and flush on the indexed path") {
         FfmpegHarness harness;
         const auto hashes = referenceHashes("ffv1_yuv420p.framemd5");
@@ -246,9 +285,12 @@ TEST_SUITE("ffmpeg") {
         const media::OriginId origin = harness.origin(source);
         std::vector<dvv::Task<dvv::Result<media::OriginalRead>>> tasks;
         for (std::int64_t index = 9; index >= 0; --index) {
-            tasks.push_back(harness.store().acquireOriginal({origin, index}, media::Api::HostPlanes,
-                                                            harness.store().hostDomain(),
-                                                            harness.cpu(), true));
+            tasks.push_back(
+                harness.store().acquireOriginal({origin, index},
+                                                {.api = media::Api::HostPlanes,
+                                                 .domain = harness.store().hostDomain(),
+                                                 .fidelity = media::OriginalFidelity::Exact},
+                                                harness.cpu()));
         }
         auto reads = dvv::syncWait(dvv::whenAll(std::move(tasks)));
         REQUIRE(reads.size() == 10);
@@ -327,7 +369,7 @@ TEST_SUITE("ffmpeg") {
               std::string::npos);
     }
 
-    TEST_CASE("ffmpeg: colour from the container and the D28 override") {
+    TEST_CASE("ffmpeg: colour from the container and the URI's colour override") {
         FfmpegHarness harness;
         const std::string uri = fixtureUri("ffv1_yuv420p.mkv");
         const std::string base = resolvedBase("ffv1_yuv420p.mkv");
@@ -341,7 +383,7 @@ TEST_SUITE("ffmpeg") {
         checkColour(media::colourParams(tagged->info().desc.colour), container);
         CHECK(tagged->info().resolvedUri == base + "?fmt=yuv420p&size=352x288&fps=25&impl=ffmpeg");
 
-        // colour= (D5R): the standard replaces matrix, curve and primaries; the range stays.
+        // With colour=, the standard replaces matrix, curve and primaries; the range stays.
         const auto overridden = harness.open(uri + "?colour=bt601-ntsc");
         const media::ColourParams bt601{.matrix = media::ColourMatrix::Bt601,
                                         .range = media::ColourRange::Limited,
@@ -372,7 +414,7 @@ TEST_SUITE("ffmpeg") {
         CHECK(preset->info().resolvedUri ==
               base + "?fmt=yuv420p&size=352x288&fps=25&colour=bt2100-hlg&range=full&impl=ffmpeg");
 
-        // The removed keys name colour=<standard> (D5R §3.1).
+        // The removed keys name colour=<standard>.
         const dvv::Error removed = openError(harness, uri + "?matrix=bt601");
         CHECK(removed.code == dvv::Errc::Format);
         CHECK(removed.message ==
@@ -519,6 +561,49 @@ TEST_SUITE("ffmpeg") {
         // The harness detached and destroyed everything.
     }
 
+    TEST_CASE("ffmpeg: detach ends queued store requests within 1 s with Cancelled") {
+        {
+            FfmpegHarness harness;
+            std::optional<PacedWorkers> paced(std::in_place);
+            const auto source = harness.open(fixtureUri(LONG));
+            REQUIRE(source->info().access == media::SourceAccess::Sequential);
+            static_cast<void>(harness.origin(source));
+            std::optional<dvv::Result<std::vector<std::byte>>> result;
+            std::thread reader([&] { result = harness.originalBytes(source, 2999); });
+            CHECK(paced->waitUntilDecoding());  // the request is decoding on the worker
+            const auto t0 = std::chrono::steady_clock::now();
+            harness.store().detach(harness.origin(source));
+            reader.join();
+            const auto elapsed = std::chrono::steady_clock::now() - t0;
+            paced.reset();  // the reads below decode at full speed
+            CHECK(elapsed < 1000ms);
+            REQUIRE(result.has_value());
+            // A missing result already failed above; the default (a value) then fails below.
+            const auto read = result.value_or(dvv::Result<std::vector<std::byte>>{});
+            CHECK_FALSE(read.has_value());
+            if (!read) {
+                CAPTURE(errorText(read.error()));
+                CHECK(read.error().code == dvv::Errc::Cancelled);
+            }
+
+            // The source is not closed: attached again, the new origin returns the right frame.
+            [[maybe_unused]] const auto reattached = harness.reattach(source);
+            const auto ours = harness.originalBytes(source, 5);
+            const auto expected = harness.originalBytes(harness.open(fixtureUri(LONG)), 5);
+            CHECK(ours.has_value());
+            CHECK(expected.has_value());
+            if (ours && expected) {
+                CHECK(*ours == *expected);
+            }
+
+            // A source opened afterwards decodes normally.
+            const auto hashes = referenceHashes("seq.framemd5");
+            const auto fresh = harness.open(fixtureUri(SEQ));
+            CHECK(frameHash(harness, fresh, 0) == hashes[0].md5);
+        }
+        // The harness detached and destroyed everything.
+    }
+
     TEST_CASE("ffmpeg: lossless codecs in AVI, MKV, MOV and NUT open and match framemd5") {
         FfmpegHarness harness;
         const std::array<std::pair<std::string_view, std::string_view>, 4> files{{
@@ -543,7 +628,7 @@ TEST_SUITE("ffmpeg") {
             CHECK(info.desc.width == 192);
             CHECK(info.desc.height == 144);
             CHECK(info.frameCount == 10);
-            // Task 0: AVI and NUT packets carry pts too, so every container is indexed.
+            // AVI and NUT packets carry pts too, so every container is indexed.
             CHECK(info.access == media::SourceAccess::RandomCostly);
             CHECK(info.fps == media::Rational{25, 1});
             checkFrames(harness, source, file, hashes, order);
@@ -593,6 +678,22 @@ TEST_SUITE("ffmpeg") {
         }
     }
 
+#if defined(__linux__)
+    // APFS and NTFS refuse a name that is not UTF-8, so only Linux can hold such a file.
+    TEST_CASE("ffmpeg: a container whose name is not UTF-8 opens from its URI") {
+        FfmpegHarness harness;
+        const TemporaryDirectory folder;
+        const std::filesystem::path copy = folder.path() / dvv::pathFromText(
+                                                               "seq\xFF"
+                                                               ".mkv");
+        dvv::components::testing::writeFile(copy, dvv::components::testing::readFile(fixture(SEQ)));
+        const auto hashes = referenceHashes("seq.framemd5");
+        REQUIRE(!hashes.empty());
+        const auto source = harness.open("file:" + dvv::pathText(copy));
+        CHECK(frameHash(harness, source, 0) == hashes[0].md5);
+    }
+#endif
+
     TEST_CASE("ffmpeg: a failed Sequential reopen leaves a defined error state") {
         auto opened = dvv::components::detail::ContainerSupplier::open(fixturePath(SEQ), running());
         REQUIRE_MESSAGE(opened.has_value(), opened.error().describe());
@@ -601,7 +702,7 @@ TEST_SUITE("ffmpeg") {
         REQUIRE(supplier.frame(20, running()).has_value());  // the ring holds 13..20
         // The injected failure: the next restart reopens a file that does not exist.
         const TemporaryDirectory folder;
-        supplier.setPathForTest(dvv::media::utf8FromPath(folder.path() / "gone.mkv"));
+        supplier.setPathForTest(dvv::pathText(folder.path() / "gone.mkv"));
         // Behind the ring (a restart), then forward from the old position, then both again.
         for (const std::int64_t index : {1, 21, 25, 0, 29}) {
             CAPTURE(index);
@@ -647,6 +748,168 @@ TEST_SUITE("ffmpeg") {
         REQUIRE_FALSE(opened.has_value());
         CHECK(opened.error().code == dvv::Errc::Internal);
         CHECK(opened.error().message == "source closed");
+    }
+
+    TEST_CASE("ffmpeg: the open-time scan honours the open token") {
+        std::stop_source stop_source;
+        stop_source.request_stop();
+        const dvv::components::detail::StopCheck stop{
+            .flag = nullptr,
+            .generation = dvv::components::ffmpeg::stopGeneration(),
+            .token = stop_source.get_token()};
+        const auto opened =
+            dvv::components::detail::ContainerSupplier::open(fixturePath(LONG), stop);
+        CHECK_FALSE(opened.has_value());
+        if (!opened) {
+            CHECK(opened.error().code == dvv::Errc::Cancelled);
+        }
+    }
+
+    TEST_CASE("ffmpeg: a token stopped before the open opens no file") {
+        // A missing file: the open's file error would show that avformat_open_input ran.
+        const TemporaryDirectory folder;
+        std::stop_source stop_source;
+        stop_source.request_stop();
+        const auto uri = dvv::parseUri(folder.uri("missing.mkv"));
+        REQUIRE(uri.has_value());
+        if (uri) {
+            const auto opened =
+                dvv::components::detail::openContainer(*uri, stop_source.get_token());
+            CHECK_FALSE(opened.has_value());
+            if (!opened) {
+                CHECK(opened.error().code == dvv::Errc::Cancelled);
+            }
+        }
+    }
+
+    TEST_CASE("ffmpeg: a stopped fetch token is Cancelled") {
+        auto made = dvv::components::detail::makeContainerWorkerForTest(fixture(SEQ));
+        REQUIRE_MESSAGE(made.has_value(), made.error().describe());
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        if (made && pool) {
+            std::stop_source stop_source;
+            stop_source.request_stop();
+            const dvv::Result<void> stopped =
+                dvv::syncWait((*made)->fetch(1, **pool, stop_source.get_token()));
+            CHECK_FALSE(stopped.has_value());
+            if (!stopped) {
+                CHECK(stopped.error().code == dvv::Errc::Cancelled);
+            }
+            // The worker is not closed: the next request runs.
+            const dvv::Result<void> next = dvv::syncWait((*made)->fetch(1, **pool));
+            CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+        }
+    }
+
+    TEST_CASE("ffmpeg: a stop after a packet read keeps the source in step") {
+        // One worker stands for a source that two origins share: a stopped request must leave
+        // the decoder where the next request expects it. The stop comes after the Kth packet
+        // read, before its send. Dropping that packet breaks both files. On the indexed file a
+        // request may seek to a key frame and read few packets, so its run stops at the first
+        // read; the file has 10 frames, so its run starts at frame 5.
+        struct Run {
+            std::string_view file;
+            std::string_view reference;
+            std::int64_t first = 0;
+            int stopAt = 0;
+        };
+        const std::array<Run, 2> runs{
+            Run{.file = SEQ, .reference = "seq.framemd5", .first = 10, .stopAt = 3},
+            Run{.file = "ffv1_yuv420p.mkv",
+                .reference = "ffv1_yuv420p.framemd5",
+                .first = 5,
+                .stopAt = 1}};
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        for (const Run& run : runs) {
+            CAPTURE(run.file);
+            const auto hashes = referenceHashes(run.reference);
+            std::atomic<int> reads{0};
+            std::stop_source stop;
+            const auto stop_at_kth_read = [&] {
+                if (++reads == run.stopAt) {
+                    stop.request_stop();
+                }
+            };
+            auto made = detail::makeContainerWorkerForTest(fixture(run.file),
+                                                           {.afterPacketRead = stop_at_kth_read});
+            CHECK_MESSAGE(made.has_value(), (made ? std::string() : made.error().describe()));
+            if (made && pool) {
+                const dvv::Result<void> stopped =
+                    dvv::syncWait((*made)->fetch(run.first, **pool, stop.get_token()));
+                CHECK_FALSE(stopped.has_value());
+                if (!stopped) {
+                    CHECK(stopped.error().code == dvv::Errc::Cancelled);
+                }
+                CHECK(reads.load() >= run.stopAt);  // the hook fired
+                CHECK(fetchHashes(**made, **pool, run.first, 4) ==
+                      referenceRange(hashes, run.first, 4));
+            }
+        }
+    }
+
+    TEST_CASE("ffmpeg: a stop at a poll costs no reset") {
+        // A Sequential source stopped after the 3rd packet read decodes on from where it stopped:
+        // no restart from frame 0.
+        auto opened = detail::ContainerSupplier::open(fixturePath(SEQ), running());
+        CHECK_MESSAGE(opened.has_value(), (opened ? std::string() : opened.error().describe()));
+        if (opened) {
+            detail::ContainerSupplier& supplier = **opened;
+            CHECK(supplier.sequential());
+            std::atomic<int> reads{0};
+            std::stop_source stop;
+            const auto stop_at_third_read = [&] {
+                if (++reads == 3) {
+                    stop.request_stop();
+                }
+            };
+            supplier.setHooksForTest({.afterPacketRead = stop_at_third_read});
+            const std::int64_t resets = supplier.resets();
+            detail::StopCheck stopping = running();
+            stopping.token = stop.get_token();
+            const auto stopped = supplier.frame(10, stopping);
+            CHECK_FALSE(stopped.has_value());
+            if (!stopped) {
+                CHECK(stopped.error().code == dvv::Errc::Cancelled);
+            }
+            CHECK(reads.load() >= 3);  // the hook fired
+            const auto next = supplier.frame(10, running());
+            CHECK_MESSAGE(next.has_value(), (next ? std::string() : next.error().describe()));
+            CHECK(supplier.resets() == resets);
+        }
+    }
+
+    TEST_CASE("ffmpeg: a real error in a stopped request still resets") {
+        // The 3rd packet's send fails, and the request's token is stopped by then: the error
+        // wins, and the source resets, so the next requests get the right frames.
+        constexpr std::int64_t FIRST = 10;
+        const auto hashes = referenceHashes("seq.framemd5");
+        std::atomic<int> sends{0};
+        std::stop_source stop;
+        const auto fail_third_send = [&]() -> std::optional<int> {
+            if (++sends != 3) {
+                return std::nullopt;
+            }
+            stop.request_stop();
+            return AVERROR_INVALIDDATA;
+        };
+        auto made =
+            detail::makeContainerWorkerForTest(fixture(SEQ), {.sendFailure = fail_third_send});
+        CHECK_MESSAGE(made.has_value(), (made ? std::string() : made.error().describe()));
+        auto pool = dvv::ExecutorFactory::makeThreadPool(1);
+        REQUIRE(pool.has_value());
+        if (made && pool) {
+            const dvv::Result<void> failed =
+                dvv::syncWait((*made)->fetch(FIRST, **pool, stop.get_token()));
+            CHECK_FALSE(failed.has_value());
+            if (!failed) {
+                CAPTURE(failed.error().describe());
+                CHECK(failed.error().code == dvv::Errc::Format);
+            }
+            CHECK(sends.load() >= 3);  // the hook fired
+            CHECK(fetchHashes(**made, **pool, FIRST, 4) == referenceRange(hashes, FIRST, 4));
+        }
     }
 
     TEST_CASE("ffmpeg: a frame that changes only its format is Format") {
@@ -706,9 +969,12 @@ TEST_SUITE("ffmpeg-single-thread") {
         const media::OriginId origin = harness.origin(source);
         std::vector<dvv::Task<dvv::Result<media::OriginalRead>>> tasks;
         for (std::int64_t index = 9; index >= 0; --index) {
-            tasks.push_back(harness.store().acquireOriginal({origin, index}, media::Api::HostPlanes,
-                                                            harness.store().hostDomain(),
-                                                            harness.cpu(), true));
+            tasks.push_back(
+                harness.store().acquireOriginal({origin, index},
+                                                {.api = media::Api::HostPlanes,
+                                                 .domain = harness.store().hostDomain(),
+                                                 .fidelity = media::OriginalFidelity::Exact},
+                                                harness.cpu()));
         }
         auto reads = dvv::syncWait(dvv::whenAll(std::move(tasks)));
         REQUIRE(reads.size() == 10);

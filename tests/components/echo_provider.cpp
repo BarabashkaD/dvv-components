@@ -16,7 +16,6 @@
 #include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_info.h"
 #include "dvv/registry/component_registry.h"
-#include "dvv/registry/parameters.h"
 
 namespace dvv::components::testing {
 
@@ -26,18 +25,11 @@ constexpr std::array<std::string_view, 1> SCHEMES{"test-echo"};
 
 }  // namespace
 
-TestEchoProvider::TestEchoProvider(CreationKey<ComponentRegistry> key,
-                                   const ParameterValues& /*values*/) noexcept
+TestEchoProvider::TestEchoProvider(CreationKey<ComponentRegistry> key) noexcept
     : Managed(std::move(key)) {}
 
 ComponentInfo TestEchoProvider::info() noexcept {
-    return {
-        .id = "test.echo", .name = "Conformance test source", .kind = Kind::Source, .version = 1};
-}
-
-const ParameterSchema& TestEchoProvider::schema() {
-    static const ParameterSchema SCHEMA;
-    return SCHEMA;
+    return {.id = "test.echo", .name = "Conformance test source", .version = 1};
 }
 
 std::expected<void, Unavailable> TestEchoProvider::probe(const Capabilities& caps) {
