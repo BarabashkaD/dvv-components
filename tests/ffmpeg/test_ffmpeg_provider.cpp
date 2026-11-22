@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <random>
@@ -30,7 +31,6 @@
 #include "dvv/base/uri.h"
 #include "dvv/base/utf8.h"
 #include "dvv/base/when_all.h"
-#include "dvv/components/ffmpeg.h"
 #include "dvv/media/frame_store.h"
 #include "dvv/media/pixel_format.h"
 #include "dvv/media/source.h"
@@ -178,9 +178,9 @@ std::pair<std::string, std::vector<std::byte>> relabelledAvi(const TemporaryDire
     return {folder.uri("patched.avi"), std::move(bytes)};
 }
 
-// A StopCheck that never stops (no flag, the current generation).
+// A StopCheck that never stops (no flag, no token).
 dvv::components::detail::StopCheck running() {
-    return {.flag = nullptr, .generation = dvv::components::ffmpeg::stopGeneration()};
+    return {.flag = nullptr};
 }
 
 // The MD5s of frames first..first+count-1, fetched one by one with no token (an empty string for a
@@ -287,7 +287,7 @@ TEST_SUITE("ffmpeg") {
         for (std::int64_t index = 9; index >= 0; --index) {
             tasks.push_back(
                 harness.store().acquireOriginal({origin, index},
-                                                {.api = media::Api::HostPlanes,
+                                                {.binding = media::HOST_PLANES,
                                                  .domain = harness.store().hostDomain(),
                                                  .fidelity = media::OriginalFidelity::Exact},
                                                 harness.cpu()));
@@ -530,40 +530,11 @@ TEST_SUITE("ffmpeg") {
         CHECK(errorText(audio).find("no video stream") != std::string::npos);
     }
 
-    TEST_CASE("ffmpeg: stopFfmpegSources ends queued store requests within 1 s") {
-        {
-            FfmpegHarness harness;
-            std::optional<PacedWorkers> paced(std::in_place);
-            const auto source = harness.open(fixtureUri(LONG));
-            REQUIRE(source->info().access == media::SourceAccess::Sequential);
-            static_cast<void>(harness.origin(source));
-            std::optional<dvv::Result<std::vector<std::byte>>> result;
-            std::thread reader([&] { result = harness.originalBytes(source, 2999); });
-            CHECK(paced->waitUntilDecoding());  // the request is decoding on the worker
-            const auto t0 = std::chrono::steady_clock::now();
-            dvv::components::stopFfmpegSources();
-            reader.join();
-            const auto elapsed = std::chrono::steady_clock::now() - t0;
-            paced.reset();  // the source opened below decodes at full speed
-            CHECK(elapsed < 1000ms);
-            REQUIRE(result.has_value());
-            // A missing result already failed above; the default (a value) then fails below.
-            const auto read = result.value_or(dvv::Result<std::vector<std::byte>>{});
-            REQUIRE_FALSE(read.has_value());
-            CAPTURE(errorText(read.error()));
-            CHECK(errorText(read.error()).find("source closed") != std::string::npos);
-
-            // A source opened afterwards takes the new generation.
-            const auto hashes = referenceHashes("seq.framemd5");
-            const auto fresh = harness.open(fixtureUri(SEQ));
-            CHECK(frameHash(harness, fresh, 0) == hashes[0].md5);
-        }
-        // The harness detached and destroyed everything.
-    }
-
     TEST_CASE("ffmpeg: detach ends queued store requests within 1 s with Cancelled") {
         {
             FfmpegHarness harness;
+            const auto other = harness.open(fixtureUri(SEQ));
+            static_cast<void>(harness.origin(other));
             std::optional<PacedWorkers> paced(std::in_place);
             const auto source = harness.open(fixtureUri(LONG));
             REQUIRE(source->info().access == media::SourceAccess::Sequential);
@@ -576,6 +547,8 @@ TEST_SUITE("ffmpeg") {
             reader.join();
             const auto elapsed = std::chrono::steady_clock::now() - t0;
             paced.reset();  // the reads below decode at full speed
+            // Another open source is not stopped by this detach.
+            CHECK(frameHash(harness, other, 0) == referenceHashes("seq.framemd5")[0].md5);
             CHECK(elapsed < 1000ms);
             REQUIRE(result.has_value());
             // A missing result already failed above; the default (a value) then fails below.
@@ -741,8 +714,7 @@ TEST_SUITE("ffmpeg") {
         // long.mkv is scanned (MKV). This proves the scan checks the flag; like the paced cases it
         // cannot tell a check per packet from one before the loop (review item).
         const std::atomic<bool> stopped{true};
-        const dvv::components::detail::StopCheck stop{
-            .flag = &stopped, .generation = dvv::components::ffmpeg::stopGeneration()};
+        const dvv::components::detail::StopCheck stop{.flag = &stopped};
         const auto opened =
             dvv::components::detail::ContainerSupplier::open(fixturePath(LONG), stop);
         REQUIRE_FALSE(opened.has_value());
@@ -753,10 +725,8 @@ TEST_SUITE("ffmpeg") {
     TEST_CASE("ffmpeg: the open-time scan honours the open token") {
         std::stop_source stop_source;
         stop_source.request_stop();
-        const dvv::components::detail::StopCheck stop{
-            .flag = nullptr,
-            .generation = dvv::components::ffmpeg::stopGeneration(),
-            .token = stop_source.get_token()};
+        const dvv::components::detail::StopCheck stop{.flag = nullptr,
+                                                      .token = stop_source.get_token()};
         const auto opened =
             dvv::components::detail::ContainerSupplier::open(fixturePath(LONG), stop);
         CHECK_FALSE(opened.has_value());
@@ -971,7 +941,7 @@ TEST_SUITE("ffmpeg-single-thread") {
         for (std::int64_t index = 9; index >= 0; --index) {
             tasks.push_back(
                 harness.store().acquireOriginal({origin, index},
-                                                {.api = media::Api::HostPlanes,
+                                                {.binding = media::HOST_PLANES,
                                                  .domain = harness.store().hostDomain(),
                                                  .fidelity = media::OriginalFidelity::Exact},
                                                 harness.cpu()));

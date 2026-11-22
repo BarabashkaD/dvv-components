@@ -119,8 +119,7 @@ void setSupplierWrapperForTest(SupplierWrapper wrapper) {
 }
 
 bool StopCheck::operator()() const noexcept {
-    return (flag != nullptr && flag->load(std::memory_order_acquire)) ||
-           ffmpeg::stopGeneration() != generation || token.stop_requested();
+    return (flag != nullptr && flag->load(std::memory_order_acquire)) || token.stop_requested();
 }
 
 Error StopCheck::error() const {
@@ -154,10 +153,8 @@ Result<media::FrameRef> copyAndPublish(const AVFrame& frame, const media::FrameD
     return ctx.publish(host);
 }
 
-AvWorker::AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc desc,
-                   std::uint64_t generation)
-    : stop_{.flag = &stopping_, .generation = generation},
-      desc_(desc),
+AvWorker::AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc desc)
+    : desc_(desc),
       supplier_(wrapForTest(std::move(supplier))),
       pool_(makeWorkerPool()) {}  // the source's own worker
 
@@ -183,8 +180,7 @@ void AvWorker::ToWorker::await_suspend(std::coroutine_handle<> handle) const {
 }
 
 Result<const AVFrame*> AvWorker::frameOnWorker(std::int64_t index, std::stop_token stop) {
-    const StopCheck check{
-        .flag = stop_.flag, .generation = stop_.generation, .token = std::move(stop)};
+    const StopCheck check{.flag = &stopping_, .token = std::move(stop)};
     if (check()) {
         return std::unexpected(check.error());
     }

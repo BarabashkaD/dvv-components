@@ -5,21 +5,17 @@
 
 #include <atomic>
 #include <cerrno>
-#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <optional>
 #include <stop_token>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include "dvv/base/error.h"
 #include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/registry/capabilities.h"
 #include "dvv/registry/module.h"
-#include "dvv/registry/parameters.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
 #include "sources/av_worker.h"
@@ -27,8 +23,8 @@
 
 namespace {
 
-using dvv::components::FfmpegLoadOptions;
-using dvv::components::FfmpegStatus;
+using dvv::components::detail::FfmpegLoadOptions;
+using dvv::components::detail::FfmpegStatus;
 using dvv::components::detail::LibraryInfo;
 using dvv::components::detail::moduleLoadOf;
 using dvv::components::detail::moduleOptions;
@@ -37,10 +33,6 @@ using dvv::components::detail::refusalReason;
 using dvv::components::detail::SearchSource;
 using dvv::components::detail::sourceName;
 using dvv::components::detail::versionText;
-
-// The old name stays until 1.0.0.
-static_assert(
-    std::is_same_v<dvv::components::detail::LibraryFacts, dvv::components::detail::LibraryInfo>);
 
 constexpr unsigned v(unsigned major, unsigned minor, unsigned micro) {
     return (major << 16) | (minor << 8) | micro;
@@ -274,28 +266,6 @@ TEST_CASE("ffmpegError without FFmpeg loaded uses the fallback text") {
     CHECK(error.message == std::format("x failed (AVERROR {})", AVERROR(ENOENT)));
 }
 
-TEST_CASE("addFfmpegCapabilities follows the status") {
-    using dvv::components::addFfmpegCapabilities;
-    {
-        dvv::Capabilities caps;
-        addFfmpegCapabilities(FfmpegStatus{}, caps);
-        CHECK(caps.names().empty());
-    }
-    FfmpegStatus status;
-    status.core = true;
-    {
-        dvv::Capabilities caps;
-        addFfmpegCapabilities(status, caps);
-        CHECK(caps.names() == std::vector<std::string>{"ffmpeg"});
-    }
-    status.lavfi = true;
-    {
-        dvv::Capabilities caps;
-        addFfmpegCapabilities(status, caps);
-        CHECK(caps.names() == std::vector<std::string>{"ffmpeg", "ffmpeg.lavfi"});
-    }
-}
-
 TEST_CASE("moduleLoadOf maps the status") {
     FfmpegStatus status;
     status.reason = "r";
@@ -358,30 +328,21 @@ TEST_CASE("moduleLoadOf maps the status") {
 TEST_CASE("moduleOptions reads the directory and refuses the rest") {
     const std::string directory_option(dvv::components::FFMPEG_DIRECTORY_OPTION);
     {
-        const auto parsed = moduleOptions(dvv::ParameterValues{});
+        const auto parsed = moduleOptions(dvv::ModuleValues{});
         CHECK(parsed.has_value());
         if (parsed) {
             CHECK_FALSE(parsed->directory.has_value());
         }
     }
     {
-        const auto parsed =
-            moduleOptions(dvv::ParameterValues{{directory_option, std::string("/opt/ffmpeg")}});
+        const auto parsed = moduleOptions(dvv::ModuleValues{{directory_option, "/opt/ffmpeg"}});
         CHECK(parsed.has_value());
         if (parsed) {
             CHECK(parsed->directory == std::optional{dvv::pathFromText("/opt/ffmpeg")});
         }
     }
     {
-        const auto parsed =
-            moduleOptions(dvv::ParameterValues{{directory_option, std::int64_t{1}}});
-        CHECK_FALSE(parsed.has_value());
-        if (!parsed) {
-            CHECK(parsed.error() == "option 'directory' must be text (a folder)");
-        }
-    }
-    {
-        const auto parsed = moduleOptions(dvv::ParameterValues{{"folder", std::string("x")}});
+        const auto parsed = moduleOptions(dvv::ModuleValues{{"folder", "x"}});
         CHECK_FALSE(parsed.has_value());
         if (!parsed) {
             CHECK(parsed.error() ==
@@ -390,7 +351,7 @@ TEST_CASE("moduleOptions reads the directory and refuses the rest") {
     }
     {
         // An empty folder is kept; planSearch refuses it as relative (no default search).
-        const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, std::string()}});
+        const auto parsed = moduleOptions(dvv::ModuleValues{{directory_option, ""}});
         CHECK(parsed.has_value());
         if (parsed) {
             CHECK(parsed->directory == std::optional{std::filesystem::path{}});
@@ -405,7 +366,7 @@ TEST_CASE("moduleOptions reads the directory and refuses the rest") {
         const std::string folder_text = std::string(
             "/tmp/a\xFF"
             "b");
-        const auto parsed = moduleOptions(dvv::ParameterValues{{directory_option, folder_text}});
+        const auto parsed = moduleOptions(dvv::ModuleValues{{directory_option, folder_text}});
         CHECK(parsed.has_value());
         CHECK((parsed && parsed->directory.has_value()));
         if (parsed) {
@@ -422,40 +383,29 @@ TEST_CASE("averrorText without FFmpeg loaded is empty") {
     CHECK_FALSE(dvv::components::ffmpeg::averrorText(-22).has_value());
 }
 
-TEST_CASE("StopCheck: the token gives Cancelled, the flag and the generation give source closed") {
+TEST_CASE("StopCheck: the token gives Cancelled, the flag gives source closed") {
     using dvv::Errc;
     using dvv::components::detail::StopCheck;
-    const std::uint64_t gen = dvv::components::ffmpeg::stopGeneration();
     std::stop_source source;
     source.request_stop();
     const std::stop_token stopped = source.get_token();
     const std::atomic<bool> set{true};
 
-    const StopCheck running{.flag = nullptr, .generation = gen, .token = {}};
+    const StopCheck running{.flag = nullptr, .token = {}};
     CHECK_FALSE(running());
 
-    const StopCheck token_only{.flag = nullptr, .generation = gen, .token = stopped};
+    const StopCheck token_only{.flag = nullptr, .token = stopped};
     CHECK(token_only());
     CHECK(token_only.error().code == Errc::Cancelled);
     CHECK(token_only.error().message == "source request cancelled");
 
-    const StopCheck flag_only{.flag = &set, .generation = gen, .token = {}};
+    const StopCheck flag_only{.flag = &set, .token = {}};
     CHECK(flag_only());
     CHECK(flag_only.error().code == Errc::Internal);
     CHECK(flag_only.error().message == "source closed");
 
-    const StopCheck generation_only{.flag = nullptr, .generation = gen + 1, .token = {}};
-    CHECK(generation_only());
-    CHECK(generation_only.error().code == Errc::Internal);
-    CHECK(generation_only.error().message == "source closed");
-
-    const StopCheck flag_and_token{.flag = &set, .generation = gen, .token = stopped};
+    const StopCheck flag_and_token{.flag = &set, .token = stopped};
     CHECK(flag_and_token());
     CHECK(flag_and_token.error().code == Errc::Cancelled);
     CHECK(flag_and_token.error().message == "source request cancelled");
-
-    const StopCheck generation_and_token{.flag = nullptr, .generation = gen + 1, .token = stopped};
-    CHECK(generation_and_token());
-    CHECK(generation_and_token.error().code == Errc::Cancelled);
-    CHECK(generation_and_token.error().message == "source request cancelled");
 }

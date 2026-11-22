@@ -38,16 +38,6 @@ void FilterGraphDeleter::operator()(AVFilterGraph* graph) const noexcept {
         api().avfilter_graph_free(&graph);
     }
 }
-void FilterInOutDeleter::operator()(AVFilterInOut* inout) const noexcept {
-    if (inout != nullptr) {
-        api().avfilter_inout_free(&inout);
-    }
-}
-void DictionaryDeleter::operator()(AVDictionary* dictionary) const noexcept {
-    if (dictionary != nullptr) {
-        api().av_dict_free(&dictionary);
-    }
-}
 
 Errc errcForAverror(int averror) noexcept {
     switch (averror) {

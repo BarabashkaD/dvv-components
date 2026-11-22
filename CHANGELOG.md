@@ -2,9 +2,34 @@
 
 All notable changes to dvv-components. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semantic versioning with
-the dvv rules: compatible = the same major and at least the minimum version, also for 0.x; breaking
-changes only in a new major, after a deprecation. This file is the release notes (there are no
-GitHub Releases).
+the dvv rules: compatible = the same 0.minor and at least the minimum version; a replaced or
+unused API is removed in the next 0.x minor, with no deprecation period. This file is the release
+notes (there are no GitHub Releases).
+
+## [0.4.0] - 2026-11-22
+
+### Changed
+- Requires dvv-build 0.6.0, dvv-base 0.6.0, dvv-registry 0.3.0, dvv-platform 0.4.0,
+  dvv-gpu 0.4.0 and dvv-media 0.3.0.
+- `dvv/components/ffmpeg.h` holds only `FFMPEG_MODULE`, `FFMPEG_CAPABILITY`,
+  `FFMPEG_LAVFI_CAPABILITY` and `FFMPEG_DIRECTORY_OPTION`, and includes only `<string_view>`.
+- Module options are text (dvv-registry 0.3.0): the refusal "option 'directory' must be text"
+  is gone.
+- The package is compatible within the same 0.minor (`SameMinorVersion`).
+
+### Removed
+- `loadFfmpeg`, `addFfmpegCapabilities`, `FfmpegStatus` and `FfmpegLoadOptions`: use
+  `ComponentRegistry::load()` and `registry.module(FFMPEG_MODULE)`.
+- `stopFfmpegSources()`: detach the origin, or stop the open's token
+  (`SourceFactory::open(request, stop)`).
+- `detail::LibraryFacts`, `detail::LibraryInfo` and `detail::refusalReason` from the public header.
+- `dvv_components_link()`: use `dvv_link_enabled_components()`.
+- The `KIND` argument of `dvv_add_component` and the global property `DVV_COMPONENTS_REGISTERS`:
+  use `DVV_COMPONENTS_IDS`.
+
+### Fixed
+- lavfi graph text is case-folded without the process locale, so a graph that names a random
+  colour in upper case counts as non-deterministic under every locale.
 
 ## [0.3.0] - 2026-11-21
 

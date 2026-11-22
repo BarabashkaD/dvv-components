@@ -248,10 +248,8 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
         return makeError(Errc::Format,
                          "lavfi: URIs take no query (the rest of the URI is the graph)");
     }
-    // One stop generation for the open and the worker (as the ffmpeg provider); the open's token
-    // bounds the pull of frame 0.
-    const std::uint64_t generation = ffmpeg::stopGeneration();
-    const StopCheck opening{.flag = nullptr, .generation = generation, .token = std::move(stop)};
+    // The open's token bounds the pull of frame 0.
+    const StopCheck opening{.flag = nullptr, .token = std::move(stop)};
 
     // 2. Build and frame 0.
     DVV_TRY(std::unique_ptr<GraphSupplier> supplier, GraphSupplier::create(graph, OPEN_RING));
@@ -323,7 +321,7 @@ Result<OpenedSource> openGraph(const Uri& uri, std::stop_token stop) {
     // The hint from frame 0's tags, for the labels.
     info.colourHint = mapped.hint;
     info.reader = "lavfi";  // no file is read (no file read mode applies)
-    opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc, generation);
+    opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc);
     return opened;
 }
 

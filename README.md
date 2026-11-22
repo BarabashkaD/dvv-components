@@ -20,7 +20,7 @@ versions from the same file:
 
 ```powershell
 git clone https://github.com/BarabashkaD/dvv-components
-git clone --branch v0.5.1 https://github.com/BarabashkaD/dvv-build
+git clone --branch v0.6.0 https://github.com/BarabashkaD/dvv-build
 python -m pip install -r dvv-build/tools/requirements.txt
 cmake -DREPO=dvv-components -P dvv-build/tools/fetch-deps.cmake
 ./dvv-build/bootstrap.ps1
@@ -37,11 +37,9 @@ An application links the umbrella target `dvv::components` and calls
 `dvv_link_enabled_components()`, which links every enabled component library as a whole archive,
 so its components and modules register:
 
-    find_package(dvv_components 0.3 REQUIRED)   # or dvv_components in-tree
+    find_package(dvv_components 0.4 REQUIRED)   # or dvv_components in-tree
     target_link_libraries(my_app PRIVATE dvv::components)
     dvv_link_enabled_components(my_app)
-
-`dvv_components_link()` is the 0.2 name; it is deprecated and removed in 1.0.0.
 
 ## Adding a component
 
@@ -55,9 +53,7 @@ so its components and modules register:
   The conformance test checks that the registry holds exactly these ids, plus the source
   providers of `dvv::media_sources` (`raw`, `synthetic`, `y4m`).
 - Each component id is recorded in the global property `DVV_COMPONENTS_IDS`.
-- A component's category is the interface it registers for. `KIND` and the global property
-  `DVV_COMPONENTS_REGISTERS` (`<component id>=<Kind>`, `Source` when `KIND` is not given) are
-  deprecated and removed in 1.0.0.
+- A component's category is the interface it registers for.
 
 Every component class is `final`, derives `dvv::Managed<T>`, has the constructor
 `(dvv::CreationKey<dvv::ComponentRegistry>)` and static `info()` and `probe()`. Its constructor
@@ -96,8 +92,6 @@ the property is `dvv::pathText` (`dvv::pathFromText` gives the folder back).
   errors (`Io`, `Format`, `Unsupported`, `OutOfMemory`, else `Internal`).
 - `dvv_check_no_ffmpeg_imports(<test name> <target>...)` adds a test that fails when a binary
   imports an FFmpeg library.
-- Deprecated (removed in 1.0.0): `loadFfmpeg()`, `addFfmpegCapabilities()`, `FfmpegStatus`,
-  `FfmpegLoadOptions` and `stopFfmpegSources()`.
 
 ## The `ffmpeg` component
 

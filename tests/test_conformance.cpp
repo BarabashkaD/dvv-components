@@ -209,7 +209,7 @@ TEST_CASE("conformance: the FFmpeg module is registered with the ffmpeg componen
     // The module refuses the option, so FFmpeg is not loaded: the result does not depend on the
     // machine, and this binary never loads FFmpeg.
     const auto registry = dvv::ComponentRegistry::load(
-        {.modules = {{std::string(dvv::components::FFMPEG_MODULE), {{"bogus", true}}}}});
+        {.modules = {{std::string(dvv::components::FFMPEG_MODULE), {{"bogus", "x"}}}}});
     const dvv::ModuleStatus* status = registry->module(dvv::components::FFMPEG_MODULE);
     if (!cmakeHas("ffmpeg")) {
         MESSAGE("the ffmpeg component is off (DVV_COMPONENT_FFMPEG)");

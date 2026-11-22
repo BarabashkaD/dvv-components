@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -16,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "dvv/base/ascii.h"
 #include "dvv/base/error.h"
 #include "dvv/base/uri.h"
 #include "dvv/media/pixel_format.h"
@@ -94,7 +94,7 @@ bool lavfiDeterministic(std::string_view graph) {
     text.reserve(graph.size());
     for (const char c : graph) {
         if (c != '\'' && c != '\\') {
-            text.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            text.push_back(dvv::asciiLower(c));
         }
     }
     return std::ranges::none_of(std::array<std::string_view, 3>{"gradients", "random", "bikeshed"},

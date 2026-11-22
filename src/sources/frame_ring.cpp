@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <new>
-#include <optional>
 
 #include "ffmpeg/api.h"
 
@@ -57,26 +56,6 @@ void FrameRing::clear() noexcept {
             slot.index.reset();
         }
     }
-}
-
-std::optional<std::int64_t> FrameRing::oldest() const noexcept {
-    std::optional<std::int64_t> result;
-    for (const Slot& slot : slots_) {
-        if (slot.index && (!result || *slot.index < *result)) {
-            result = slot.index;
-        }
-    }
-    return result;
-}
-
-std::optional<std::int64_t> FrameRing::newest() const noexcept {
-    std::optional<std::int64_t> result;
-    for (const Slot& slot : slots_) {
-        if (slot.index && (!result || *slot.index > *result)) {
-            result = slot.index;
-        }
-    }
-    return result;
 }
 
 }  // namespace dvv::components::detail

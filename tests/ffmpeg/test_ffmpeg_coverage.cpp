@@ -257,9 +257,9 @@ void checkDamageEnds(const DamagedRun& run, std::size_t interval) {
     }
 }
 
-// A StopCheck that never stops (no flag, the current generation).
+// A StopCheck that never stops (no flag, no token).
 dvv::components::detail::StopCheck running() {
-    return {.flag = nullptr, .generation = dvv::components::ffmpeg::stopGeneration()};
+    return {.flag = nullptr};
 }
 
 }  // namespace

@@ -9,12 +9,10 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 
 #include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
 #include "dvv/registry/module.h"
-#include "dvv/registry/parameters.h"
 #include "ffmpeg/loader_detail.h"
 
 namespace dvv::components {
@@ -27,8 +25,8 @@ ModuleInfo FfmpegModule::info() noexcept {
     return {.id = FFMPEG_MODULE, .name = "FFmpeg", .produces = PRODUCES};
 }
 
-ModuleLoad FfmpegModule::load(const ParameterValues& options) {
-    std::expected<FfmpegLoadOptions, std::string> parsed = detail::moduleOptions(options);
+ModuleLoad FfmpegModule::load(const ModuleValues& options) {
+    std::expected<detail::FfmpegLoadOptions, std::string> parsed = detail::moduleOptions(options);
     if (!parsed) {
         // A bad option loads nothing, so a later valid load() still decides the process's load.
         return ModuleLoad{
@@ -40,19 +38,14 @@ ModuleLoad FfmpegModule::load(const ParameterValues& options) {
 
 namespace detail {
 
-std::expected<FfmpegLoadOptions, std::string> moduleOptions(const ParameterValues& options) {
+std::expected<FfmpegLoadOptions, std::string> moduleOptions(const ModuleValues& options) {
     FfmpegLoadOptions load_options;
-    for (const auto& [key, value] : options) {
+    for (const auto& [key, folder] : options) {
         if (key != FFMPEG_DIRECTORY_OPTION) {
             return std::unexpected(std::format("unknown option '{}' (the FFmpeg module takes '{}')",
                                                key, FFMPEG_DIRECTORY_OPTION));
         }
-        const std::string* folder = std::get_if<std::string>(&value);
-        if (folder == nullptr) {
-            return std::unexpected(
-                std::format("option '{}' must be text (a folder)", FFMPEG_DIRECTORY_OPTION));
-        }
-        load_options.directory = pathFromText(*folder);
+        load_options.directory = pathFromText(folder);
     }
     return load_options;
 }

@@ -569,10 +569,8 @@ Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, Contain
         return makeError(Errc::Cancelled, "source request cancelled");
     }
     const ffmpeg::Api& api = ffmpeg::api();
-    // One stop generation for the open and the worker: a source whose open overlapped
-    // stopFfmpegSources() is born stopped. The open's token bounds the scan.
-    const std::uint64_t generation = ffmpeg::stopGeneration();
-    const StopCheck opening{.flag = nullptr, .generation = generation, .token = std::move(stop)};
+    // The open's token bounds the scan.
+    const StopCheck opening{.flag = nullptr, .token = std::move(stop)};
     DVV_TRY(std::unique_ptr<ContainerSupplier> supplier,
             ContainerSupplier::open(uri.path, opening));
     supplier->setHooksForTest(std::move(hooks));
@@ -661,7 +659,7 @@ Result<OpenedSource> openWithHooks(const Uri& uri, std::stop_token stop, Contain
     // The hint from the file's tags, for the labels.
     info.colourHint = mapped.hint;
     info.reader = "ffmpeg";  // FFmpeg's own file I/O (no file read mode applies)
-    opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc, generation);
+    opened.worker = std::make_unique<AvWorker>(std::move(supplier), desc);
     return opened;
 }
 

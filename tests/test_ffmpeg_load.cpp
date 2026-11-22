@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
-#include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <memory>
@@ -17,31 +15,29 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "dvv/base/error.h"
 #include "dvv/base/log.h"
 #include "dvv/base/utf8.h"
 #include "dvv/components/ffmpeg.h"
-#include "dvv/registry/capabilities.h"
 #include "dvv/registry/component_registry.h"
 #include "dvv/registry/module.h"
-#include "dvv/registry/parameters.h"
 #include "ffmpeg/api.h"
+#include "ffmpeg/loader_detail.h"
 #include "ffmpeg_support.h"
 
 namespace {
 
-using dvv::components::addFfmpegCapabilities;
 using dvv::components::FFMPEG_CAPABILITY;
 using dvv::components::FFMPEG_DIRECTORY_OPTION;
 using dvv::components::FFMPEG_LAVFI_CAPABILITY;
 using dvv::components::FFMPEG_MODULE;
-using dvv::components::FfmpegLoadOptions;
-using dvv::components::loadFfmpeg;
 
-// The module's reason for a `directory` option that is not text.
-constexpr std::string_view OPTION_NOT_TEXT = "option 'directory' must be text (a folder)";
+// The module's reason for an option it does not know.
+constexpr std::string_view UNKNOWN_OPTION =
+    "unknown option 'folder' (the FFmpeg module takes 'directory')";
 
 bool anyLineContains(const std::vector<std::string>& lines, std::string_view text) {
     return std::ranges::any_of(
@@ -53,6 +49,11 @@ std::vector<std::string> bothCapabilities() {
     return {std::string(FFMPEG_CAPABILITY), std::string(FFMPEG_LAVFI_CAPABILITY)};
 }
 
+// The process's first load, as the loader holds it.
+const dvv::components::detail::FfmpegStatus& loaderStatus() {
+    return dvv::components::detail::loadOnce({}).status;
+}
+
 // The property the module adds when DVV_FFMPEG_DIR chose the folder.
 dvv::ModuleProperty variableProperty() {
     return dvv::ModuleProperty{.key = std::string(dvv::MODULE_VARIABLE_PROPERTY),
@@ -61,7 +62,7 @@ dvv::ModuleProperty variableProperty() {
 
 // The module's properties when FFmpeg loaded from DVV_FFMPEG_DIR, in their order.
 std::vector<dvv::ModuleProperty> availableProperties() {
-    const auto& status = loadFfmpeg();
+    const auto& status = loaderStatus();
     return {
         dvv::ModuleProperty{.key = std::string(dvv::MODULE_VERSION_PROPERTY),
                             .value = status.version},
@@ -73,11 +74,15 @@ std::vector<dvv::ModuleProperty> availableProperties() {
     };
 }
 
-// A registry whose FFmpeg module gets `directory` as its one option.
-std::unique_ptr<dvv::ComponentRegistry> loadWithDirectory(const dvv::ParameterValue& directory) {
+// A registry whose FFmpeg module gets one option.
+std::unique_ptr<dvv::ComponentRegistry> loadWithOption(std::string key, std::string value) {
     return dvv::ComponentRegistry::load(
-        {.modules = {
-             {std::string(FFMPEG_MODULE), {{std::string(FFMPEG_DIRECTORY_OPTION), directory}}}}});
+        {.modules = {{std::string(FFMPEG_MODULE), {{std::move(key), std::move(value)}}}}});
+}
+
+// A registry whose FFmpeg module gets `directory` as its one option.
+std::unique_ptr<dvv::ComponentRegistry> loadWithDirectory(const std::string& directory) {
+    return loadWithOption(std::string(FFMPEG_DIRECTORY_OPTION), directory);
 }
 
 // Two threads each load a registry at the same time.
@@ -102,7 +107,7 @@ void checkSameStatus(const dvv::ModuleStatus& first, const dvv::ModuleStatus& se
 
 TEST_SUITE("ffmpeg") {
     TEST_CASE("loader: the prefix's FFmpeg loads and passes the checks") {
-        const auto& status = loadFfmpeg();
+        const auto& status = loaderStatus();
         CHECK(status.core);
         CHECK(status.lavfi);
         CHECK(status.reason.empty());
@@ -110,13 +115,6 @@ TEST_SUITE("ffmpeg") {
         CHECK(status.version == "n8.1.3");
         CHECK(std::filesystem::equivalent(status.directory,
                                           dvv::components::testing::ffmpegRuntimeDirectory()));
-        const std::array<unsigned, 6> majors{
-            LIBAVUTIL_VERSION_MAJOR,  LIBAVCODEC_VERSION_MAJOR,    LIBAVFORMAT_VERSION_MAJOR,
-            LIBSWSCALE_VERSION_MAJOR, LIBSWRESAMPLE_VERSION_MAJOR, LIBAVFILTER_VERSION_MAJOR};
-        for (std::size_t i = 0; i < majors.size(); ++i) {
-            CAPTURE(i);
-            CHECK((status.libraryVersions[i] >> 16) == majors[i]);
-        }
         const dvv::components::ffmpeg::Api& api = dvv::components::ffmpeg::api();
         // NOLINTBEGIN(bugprone-macro-parentheses)
 #define DVV_FFMPEG_CHECK_MEMBER(library_id, symbol) CHECK_MESSAGE(api.symbol != nullptr, #symbol);
@@ -126,15 +124,16 @@ TEST_SUITE("ffmpeg") {
     }
 
     TEST_CASE("loader: later calls return the first result") {
-        const auto& first = loadFfmpeg();
-        const auto& second =
-            loadFfmpeg(FfmpegLoadOptions{.directory = std::filesystem::path("relative")});
-        CHECK(&first == &second);
-        CHECK(second.core);
+        const auto first = dvv::components::detail::loadOnce({});
+        const auto second =
+            dvv::components::detail::loadOnce(dvv::components::detail::FfmpegLoadOptions{
+                .directory = std::filesystem::path("relative")});
+        CHECK(&first.status == &second.status);
+        CHECK(second.status.core);
     }
 
     TEST_CASE("loader: FFmpeg's log reaches the dvv logger, capped at warning") {
-        REQUIRE(loadFfmpeg().core);
+        REQUIRE(loaderStatus().core);
         auto sink = std::make_shared<dvv::MemorySink>();
         dvv::Logger::instance().addSink(sink);
         const auto& api = dvv::components::ffmpeg::api();
@@ -158,7 +157,7 @@ TEST_SUITE("ffmpeg") {
     }
 
     TEST_CASE("loader: ffmpegError names the call and maps the code") {
-        REQUIRE(loadFfmpeg().core);
+        REQUIRE(loaderStatus().core);
         using dvv::components::ffmpeg::ffmpegError;
         const dvv::Error missing = ffmpegError("avformat_open_input", AVERROR(ENOENT));
         CHECK(missing.code == dvv::Errc::Io);
@@ -172,13 +171,6 @@ TEST_SUITE("ffmpeg") {
         CHECK(invalid.message.ends_with(std::format("(AVERROR {})", AVERROR_INVALIDDATA)));
     }
 
-    TEST_CASE("loader: the capabilities follow the status") {
-        dvv::Capabilities caps;
-        addFfmpegCapabilities(loadFfmpeg(), caps);
-        CHECK(caps.has(FFMPEG_CAPABILITY));
-        CHECK(caps.has(FFMPEG_LAVFI_CAPABILITY));
-    }
-
     TEST_CASE("load() provides both capabilities") {
         const auto registry = dvv::ComponentRegistry::load();
         REQUIRE(registry != nullptr);
@@ -188,11 +180,11 @@ TEST_SUITE("ffmpeg") {
             CHECK(module->provides == bothCapabilities());
             CHECK(module->withheld.empty());
             CHECK(module->reason.empty());
-            const std::string directory = dvv::pathText(loadFfmpeg().directory);
+            const std::string directory = dvv::pathText(loaderStatus().directory);
             CHECK(module->property(dvv::MODULE_VERSION_PROPERTY) ==
-                  std::optional<std::string_view>{loadFfmpeg().version});
+                  std::optional<std::string_view>{loaderStatus().version});
             CHECK(module->property(dvv::MODULE_LICENCE_PROPERTY) ==
-                  std::optional<std::string_view>{loadFfmpeg().licence});
+                  std::optional<std::string_view>{loaderStatus().licence});
             CHECK(module->property(dvv::MODULE_DIRECTORY_PROPERTY) ==
                   std::optional<std::string_view>{directory});
             CHECK(std::filesystem::equivalent(dvv::pathFromText(directory),
@@ -224,7 +216,7 @@ TEST_SUITE("ffmpeg") {
 
     TEST_CASE("a second load() keeps the first result") {
         const auto first = dvv::ComponentRegistry::load();
-        const auto second = loadWithDirectory(std::string("/opt/other-ffmpeg"));
+        const auto second = loadWithDirectory("/opt/other-ffmpeg");
         REQUIRE(first != nullptr);
         REQUIRE(second != nullptr);
         const dvv::ModuleStatus* first_module = first->module(FFMPEG_MODULE);
@@ -239,14 +231,14 @@ TEST_SUITE("ffmpeg") {
     }
 
     TEST_CASE("a bad option provides nothing; a valid load after it provides both") {
-        const auto refused = loadWithDirectory(std::int64_t{1});
+        const auto refused = loadWithOption("folder", "x");
         REQUIRE(refused != nullptr);
         const dvv::ModuleStatus* refused_module = refused->module(FFMPEG_MODULE);
         CHECK(refused_module != nullptr);
         if (refused_module) {
             CHECK(refused_module->provides.empty());
             CHECK(refused_module->withheld == bothCapabilities());
-            CHECK(refused_module->reason == OPTION_NOT_TEXT);
+            CHECK(refused_module->reason == UNKNOWN_OPTION);
             CHECK(refused_module->properties.empty());
         }
         CHECK_FALSE(refused->capabilities().has(FFMPEG_CAPABILITY));
@@ -261,7 +253,7 @@ TEST_SUITE("ffmpeg") {
     }
 
     TEST_CASE("load() logs no folder") {
-        const std::string folder = dvv::pathText(loadFfmpeg().directory);
+        const std::string folder = dvv::pathText(loaderStatus().directory);
         REQUIRE_FALSE(folder.empty());
         auto sink = std::make_shared<dvv::MemorySink>();
         dvv::Logger::instance().addSink(sink);
@@ -309,14 +301,14 @@ TEST_SUITE("ffmpeg-absent") {
         if (module) {
             CHECK(module->provides.empty());
             CHECK(module->withheld == bothCapabilities());
-            CHECK(module->reason == loadFfmpeg().reason);
+            CHECK(module->reason == loaderStatus().reason);
             CHECK(module->properties == std::vector{variableProperty()});
         }
         CHECK_FALSE(registry->capabilities().has(FFMPEG_CAPABILITY));
     }
 
     TEST_CASE("loader: an empty FFmpeg directory leaves FFmpeg off with the reason") {
-        const auto& status = loadFfmpeg();
+        const auto& status = loaderStatus();
         CHECK_FALSE(status.core);
         CHECK_FALSE(status.lavfi);
         CAPTURE(status.reason);
@@ -324,21 +316,18 @@ TEST_SUITE("ffmpeg-absent") {
         CHECK(status.reason.find("no-ffmpeg") != std::string::npos);
         CHECK(status.reason.find("could not be loaded") != std::string::npos);
         CHECK(status.version.empty());
-        dvv::Capabilities caps;
-        addFfmpegCapabilities(status, caps);
-        CHECK(caps.names().empty());
         CHECK_THROWS_AS(static_cast<void>(dvv::components::ffmpeg::api()), std::logic_error);
     }
 }
 
 TEST_SUITE("ffmpeg-relative") {
     TEST_CASE("a bad option does not take the once-per-process load") {
-        const auto refused = loadWithDirectory(std::int64_t{1});
+        const auto refused = loadWithOption("folder", "x");
         REQUIRE(refused != nullptr);
         const dvv::ModuleStatus* refused_module = refused->module(FFMPEG_MODULE);
         CHECK(refused_module != nullptr);
         if (refused_module) {
-            CHECK(refused_module->reason == OPTION_NOT_TEXT);
+            CHECK(refused_module->reason == UNKNOWN_OPTION);
             CHECK(refused_module->properties.empty());
         }
         // The bad option returned before the load, so this load still reads DVV_FFMPEG_DIR.
@@ -361,14 +350,14 @@ TEST_SUITE("ffmpeg-relative") {
         if (module) {
             CHECK(module->provides.empty());
             CHECK(module->withheld == bothCapabilities());
-            CHECK(module->reason == loadFfmpeg().reason);
+            CHECK(module->reason == loaderStatus().reason);
             CHECK(module->reason.find("must be absolute") != std::string::npos);
             CHECK(module->properties == std::vector{variableProperty()});
         }
     }
 
     TEST_CASE("loader: a relative DVV_FFMPEG_DIR is refused") {
-        const auto& status = loadFfmpeg();
+        const auto& status = loaderStatus();
         CHECK(status.reason == "DVV_FFMPEG_DIR must be absolute (got 'ffmpeg-relative')");
         CHECK_FALSE(status.core);
     }

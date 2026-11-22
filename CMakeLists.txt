@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(dvv_components VERSION 0.3.0 DESCRIPTION "dvv component libraries" LANGUAGES CXX)
+project(dvv_components VERSION 0.4.0 DESCRIPTION "dvv component libraries" LANGUAGES CXX)
 # Version string; a pre-release build adds its release-stage label.
 set(dvv_components_VERSION_STRING "${PROJECT_VERSION}")
 
@@ -50,7 +50,7 @@ target_include_directories(dvv_ffmpeg_internal INTERFACE ${CMAKE_CURRENT_SOURCE_
 target_link_libraries(dvv_ffmpeg_internal INTERFACE dvv::ffmpeg_headers)
 
 # The FFmpeg run-time binding: loader, function table, AVERROR mapping and log
-# routing. Public part: dvv/components/ffmpeg.h (status and loading; no FFmpeg types).
+# routing. Public part: dvv/components/ffmpeg.h (the module constants; no FFmpeg types).
 add_library(dvv_ffmpeg STATIC
     src/ffmpeg/checks.cpp
     src/ffmpeg/error.cpp
@@ -93,7 +93,7 @@ endforeach()
 configure_package_config_file(cmake/dvv_componentsConfig.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/dvv_componentsConfig.cmake INSTALL_DESTINATION ${config_dir})
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/dvv_componentsConfigVersion.cmake
-    COMPATIBILITY SameMajorVersion)
+    COMPATIBILITY SameMinorVersion)
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/dvv_componentsConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/dvv_componentsConfigVersion.cmake

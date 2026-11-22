@@ -21,7 +21,7 @@ enum class Library : std::uint8_t { Avutil, Avcodec, Avformat, Swscale, Swresamp
 
 // X(<Library>, <function>): every FFmpeg function dvv-components calls. Add a line when a provider
 // needs another function; it must be exported by that library. Avfilter's entries are null unless
-// FfmpegStatus::lavfi.
+// detail::FfmpegStatus::lavfi.
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define DVV_FFMPEG_FUNCTIONS(X)                   \
     X(Avutil, avutil_version)                     \
@@ -108,18 +108,14 @@ struct Api {
 };
 // NOLINTEND(bugprone-macro-parentheses)
 
-// The loaded table. Throws std::logic_error("FFmpeg is not loaded") unless FfmpegStatus::core;
-// callers exist only where the capability does (a provider's probe requires it).
+// The loaded table. Throws std::logic_error("FFmpeg is not loaded") unless
+// detail::FfmpegStatus::core; callers exist only where the capability does (a provider's probe
+// requires it).
 [[nodiscard]] const Api& api();
 
 // av_strerror's text for `averror`. Nullopt when FFmpeg is not loaded or av_strerror has no text.
 // Does not throw.
 [[nodiscard]] std::optional<std::string> averrorText(int averror);
-
-// The process-wide stop generation: read with acquire; stopFfmpegSources()
-// increments it with release. A source worker remembers the value it was created with and ends its
-// work once the value differs.
-[[nodiscard]] std::uint64_t stopGeneration() noexcept;
 
 // Some decoders report a damaged packet only in their log (FFmpeg 8.1.3 FFV1
 // logs "slice CRC mismatch", conceals the slice and sets neither AVFrame::decode_error_flags nor
@@ -152,19 +148,11 @@ struct PacketDeleter {
 struct FilterGraphDeleter {
     void operator()(AVFilterGraph* graph) const noexcept;
 };
-struct FilterInOutDeleter {
-    void operator()(AVFilterInOut* inout) const noexcept;
-};
-struct DictionaryDeleter {
-    void operator()(AVDictionary* dictionary) const noexcept;
-};
 using FormatContextPtr = std::unique_ptr<AVFormatContext, FormatContextDeleter>;
 using CodecContextPtr = std::unique_ptr<AVCodecContext, CodecContextDeleter>;
 using FramePtr = std::unique_ptr<AVFrame, FrameDeleter>;
 using PacketPtr = std::unique_ptr<AVPacket, PacketDeleter>;
 using FilterGraphPtr = std::unique_ptr<AVFilterGraph, FilterGraphDeleter>;
-using FilterInOutPtr = std::unique_ptr<AVFilterInOut, FilterInOutDeleter>;
-using DictionaryPtr = std::unique_ptr<AVDictionary, DictionaryDeleter>;
 
 // AVERROR(ENOMEM) -> OutOfMemory; AVERROR(ENOENT, EIO, EACCES, EPERM, EISDIR,
 // ENOTDIR, ENXIO, ENODEV, EROFS, ENOSPC, EFBIG, ENAMETOOLONG, EMFILE) -> Io; AVERROR_INVALIDDATA ->
