@@ -53,7 +53,7 @@ public:
     // Attaches a source again after its origin was detached: the old origin is forgotten, the new
     // one is returned and detached by the destructor.
     [[nodiscard]] media::OriginId reattach(const std::shared_ptr<media::ISource>& source);
-    // acquireOriginal(OriginalFidelity::Exact, HostPlanes, host) of the source's origin and a copy
+    // acquireOriginal(OriginalFidelity::Exact, HOST_PLANES, host) of the source's origin and a copy
     // of the tight bytes. The store's host tier is then trimmed to 0, so the next read of any frame
     // runs the source's produce() again (the provider's ring, seek and restart paths are what the
     // tests check, not the store's cache).

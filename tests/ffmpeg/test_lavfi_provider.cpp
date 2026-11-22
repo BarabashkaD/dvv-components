@@ -196,7 +196,7 @@ TEST_SUITE("ffmpeg") {
         for (std::int64_t index = 11; index >= 0; --index) {
             tasks.push_back(
                 harness.store().acquireOriginal({origin, index},
-                                                {.api = media::Api::HostPlanes,
+                                                {.binding = media::HOST_PLANES,
                                                  .domain = harness.store().hostDomain(),
                                                  .fidelity = media::OriginalFidelity::Exact},
                                                 harness.cpu()));

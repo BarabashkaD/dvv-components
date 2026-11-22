@@ -7,22 +7,20 @@
 #include <expected>
 #include <string>
 
-#include "dvv/components/ffmpeg.h"
 #include "dvv/registry/module.h"
-#include "dvv/registry/parameters.h"
 #include "ffmpeg/loader_detail.h"
 
 namespace dvv::components {
 
 struct FfmpegModule {
     [[nodiscard]] static ModuleInfo info() noexcept;
-    [[nodiscard]] static ModuleLoad load(const ParameterValues& options);
+    [[nodiscard]] static ModuleLoad load(const ModuleValues& options);
 };
 
 namespace detail {
 // The module's options as load options; the reason text when they are not valid.
 [[nodiscard]] std::expected<FfmpegLoadOptions, std::string> moduleOptions(
-    const ParameterValues& options);
+    const ModuleValues& options);
 // What the module reports for a load result (pure; unit-tested without FFmpeg).
 [[nodiscard]] ModuleLoad moduleLoadOf(const FfmpegStatus& status, SearchSource source);
 }  // namespace detail

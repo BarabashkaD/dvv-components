@@ -24,8 +24,6 @@ public:
     // dropped first.
     void put(std::int64_t index, AVFrame& frame);
     void clear() noexcept;
-    [[nodiscard]] std::optional<std::int64_t> oldest() const noexcept;
-    [[nodiscard]] std::optional<std::int64_t> newest() const noexcept;
     [[nodiscard]] std::size_t capacity() const noexcept { return slots_.size(); }
 
 private:

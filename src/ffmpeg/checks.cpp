@@ -9,7 +9,6 @@
 #include <utility>
 
 #include "dvv/base/utf8.h"
-#include "dvv/components/ffmpeg.h"
 #include "ffmpeg/loader_detail.h"
 
 namespace dvv::components::detail {

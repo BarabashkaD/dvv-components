@@ -5,7 +5,6 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <mutex>
@@ -22,7 +21,6 @@
 #include "dvv/base/log.h"
 #include "dvv/base/paths.h"
 #include "dvv/base/utf8.h"
-#include "dvv/components/ffmpeg.h"
 #include "dvv/platform/dynamic_library.h"
 #include "ffmpeg/api.h"
 #include "ffmpeg/loader_detail.h"
@@ -41,7 +39,7 @@ struct LibraryEntry {
     decltype(Api::avutil_license) Api::* licence;              // <lib>_license
     decltype(Api::avutil_configuration) Api::* configuration;  // <lib>_configuration
 };
-// The library prefixes, in the FfmpegStatus::libraryVersions order.
+// The library prefixes, in the order refusalReason checks them.
 #define DVV_FFMPEG_LIBRARY_TABLE(X)                      \
     X(Avutil, avutil, LIBAVUTIL_VERSION_INT)             \
     X(Avcodec, avcodec, LIBAVCODEC_VERSION_INT)          \
@@ -96,7 +94,7 @@ std::string libraryFile(Library library) {
 // Process infrastructure: created once, never destroyed, like the Logger.
 struct LoaderState {
     std::once_flag once;
-    FfmpegStatus status;
+    detail::FfmpegStatus status;
     detail::SearchSource source = detail::SearchSource::Default;  // where the search came from
     Api api;
     std::atomic<bool> loaded{false};
@@ -206,7 +204,7 @@ struct Located {
     std::string error;
 };
 
-Located locate(const FfmpegLoadOptions& options) {
+Located locate(const detail::FfmpegLoadOptions& options) {
     std::filesystem::path exe_dir;
     if (auto exe = paths::executablePath(); exe) {
         exe_dir = exe->parent_path();
@@ -247,8 +245,8 @@ Located locate(const FfmpegLoadOptions& options) {
 }
 
 // Behaviour: plan, directory, open, resolve, library info, refusal, success.
-void load(LoaderState& state, const FfmpegLoadOptions& options) {
-    FfmpegStatus& status = state.status;
+void load(LoaderState& state, const detail::FfmpegLoadOptions& options) {
+    detail::FfmpegStatus& status = state.status;
     status = {};  // a retry after a throwing attempt (call_once runs again) starts clean
     Located located = locate(options);
     state.source = located.source;  // before the first return: every result carries it
@@ -294,11 +292,9 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
     }
 
     std::vector<detail::LibraryInfo> infos;
-    std::array<std::uint32_t, 6> versions{};
     for (std::size_t i = 0; i < LIBRARIES.size(); ++i) {
         if (opened[indexOf(LIBRARIES[i].library)]) {
             infos.push_back(infoOf(api, LIBRARIES[i]));
-            versions[i] = infos.back().runtimeVersion;
         }
     }
     if (auto refusal = detail::refusalReason(infos)) {
@@ -321,12 +317,11 @@ void load(LoaderState& state, const FfmpegLoadOptions& options) {
     status.version = text(state.api.av_version_info());
     status.licence = text(state.api.avutil_license());
     status.directory = directory;
-    status.libraryVersions = versions;
 }
 
 }  // namespace
 
-detail::LoadOutcome detail::loadOnce(const FfmpegLoadOptions& options) {
+detail::LoadOutcome detail::loadOnce(const detail::FfmpegLoadOptions& options) {
     LoaderState& state = loaderState();
     std::call_once(state.once, [&] {
         load(state, options);
@@ -337,35 +332,7 @@ detail::LoadOutcome detail::loadOnce(const FfmpegLoadOptions& options) {
     return {.status = state.status, .source = state.source};
 }
 
-const FfmpegStatus& loadFfmpeg(const FfmpegLoadOptions& options) {
-    return detail::loadOnce(options).status;
-}
-
-void addFfmpegCapabilities(const FfmpegStatus& status, Capabilities& caps) {
-    if (status.core) {
-        caps.add(FFMPEG_CAPABILITY);
-    }
-    if (status.lavfi) {
-        caps.add(FFMPEG_LAVFI_CAPABILITY);
-    }
-}
-
-namespace {
-// Constant-initialised and never destroyed before use ends (a trivially destructible atomic).
-std::atomic<std::uint64_t>& stopCounter() noexcept {
-    static std::atomic<std::uint64_t> counter{0};
-    return counter;
-}
-}  // namespace
-
-void stopFfmpegSources() noexcept {
-    stopCounter().fetch_add(1, std::memory_order_release);
-}
-
 namespace ffmpeg {
-std::uint64_t stopGeneration() noexcept {
-    return stopCounter().load(std::memory_order_acquire);
-}
 
 const Api& api() {
     LoaderState& state = loaderState();

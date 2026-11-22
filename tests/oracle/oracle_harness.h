@@ -52,7 +52,7 @@ public:
     OracleHarness(const OracleHarness&) = delete;
     OracleHarness& operator=(const OracleHarness&) = delete;
 
-    // The original bytes of frame `index` of the URI's source (HostPlanes, exact, planes back to
+    // The original bytes of frame `index` of the URI's source (HOST_PLANES, exact, planes back to
     // back).
     [[nodiscard]] Result<std::vector<std::byte>> originalBytes(std::string_view uri,
                                                                std::int64_t index);

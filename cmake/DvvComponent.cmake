@@ -11,23 +11,17 @@
 #   component's category is its interface. The library is appended to the global property
 #   DVV_COMPONENTS_LIBRARIES. When OFF: nothing is created or recorded. <id>: [a-z][a-z0-9_]*;
 #   component ids: [a-z][a-z0-9_.-]*, each registered once. There is no SHADERS argument yet.
-#   KIND <name>: deprecated (0.3.0); removed in 1.0.0. It only feeds DVV_COMPONENTS_REGISTERS.
-#   DVV_COMPONENTS_REGISTERS: deprecated (0.3.0), use DVV_COMPONENTS_IDS; removed in 1.0.0. Each
-#   id as "<component id>=<Kind>", where <Kind> is the KIND given, else Source (the kind the
-#   registry reports for a component that sets none).
 # dvv_link_enabled_components(<target>)
 #   dvv_link_components(<target> <every library in DVV_COMPONENTS_LIBRARIES>): each as a whole
 #   archive, so its DVV_REGISTER and DVV_REGISTER_MODULE lines survive linking (with MSVC,
 #   dvv_link_components() also sets /INCREMENTAL:NO).
-# dvv_components_link(<target>): deprecated (0.3.0), use dvv_link_enabled_components(); removed
-#   in 1.0.0.
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)
 #   A CTest test that fails when one of the targets' binaries imports an FFmpeg library,
 #   through ${DVV_COMPONENTS_CMAKE_DIR}/check-no-ffmpeg-imports.cmake.
 include_guard(GLOBAL)
 
 function(dvv_add_component id)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "KIND" "SOURCES;LINK;REGISTERS")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;LINK;REGISTERS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "dvv_add_component(${id}): unexpected '${arg_UNPARSED_ARGUMENTS}'")
     endif()
@@ -64,13 +58,8 @@ function(dvv_add_component id)
     set_target_properties(${target} PROPERTIES EXPORT_NAME component_${id})
     target_link_libraries(${target} PUBLIC dvv::media PRIVATE ${arg_LINK})
     dvv_set_compiler_options(${target})
-    set(kind Source)
-    if(arg_KIND)
-        set(kind "${arg_KIND}")
-    endif()
     foreach(component IN LISTS arg_REGISTERS)
         set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_IDS "${component}")
-        set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_REGISTERS "${component}=${kind}")
     endforeach()
     set_property(GLOBAL APPEND PROPERTY DVV_COMPONENTS_LIBRARIES ${target})
 endfunction()
@@ -78,10 +67,6 @@ endfunction()
 function(dvv_link_enabled_components target)
     get_property(libraries GLOBAL PROPERTY DVV_COMPONENTS_LIBRARIES)
     dvv_link_components(${target} ${libraries})
-endfunction()
-
-function(dvv_components_link target)
-    dvv_link_enabled_components(${target})
 endfunction()
 
 # dvv_check_no_ffmpeg_imports(<test name> <target>...)

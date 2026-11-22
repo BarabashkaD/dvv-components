@@ -23,16 +23,14 @@
 
 namespace dvv::components::detail {
 
-// The stop condition of one request: the worker's flag (set by ~AvWorker), a stopFfmpegSources()
-// since the worker was created (deprecated path; removed in 1.0.0), or the request's token (the
-// store's detach, the open's stop).
+// The stop condition of one request: the worker's flag (set by ~AvWorker) or the request's token
+// (the store's detach, the open's stop).
 struct StopCheck {
     const std::atomic<bool>* flag = nullptr;
-    std::uint64_t generation = 0;
     std::stop_token token{};
-    [[nodiscard]] bool operator()() const noexcept;  // flag || generation changed || token stopped
+    [[nodiscard]] bool operator()() const noexcept;  // flag set || token stopped
     // Errc::Cancelled "source request cancelled" when the token is stopped, else Errc::Internal
-    // "source closed" (the flag and the deprecated generation keep today's code and text).
+    // "source closed".
     [[nodiscard]] Error error() const;
 };
 
@@ -75,10 +73,8 @@ void setSupplierWrapperForTest(SupplierWrapper wrapper);
 class AvWorker {
 public:
     // Starts the worker thread (ExecutorFactory::makeThreadPool(1)); throws std::runtime_error
-    // when it cannot be created. `generation`: ffmpeg::stopGeneration() when the source's open
-    // began, so a stopFfmpegSources() during the open stops the new source too.
-    AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc desc,
-             std::uint64_t generation);
+    // when it cannot be created.
+    AvWorker(std::unique_ptr<IFrameSupplier> supplier, media::FrameDesc desc);
     // Sets `stopping`, then destroys the pool: every queued request runs, sees the flag and
     // completes with Internal "source closed" (Errc::Cancelled "source request cancelled" when its
     // token is stopped); then the supplier (and its AV objects) dies. Must not run on the worker
@@ -117,13 +113,12 @@ private:
         void await_resume() const noexcept {}
     };
     [[nodiscard]] ToWorker toWorker() noexcept { return ToWorker{this}; }
-    // On the worker: the check of the flag, the generation and `stop`; its error when stopped, else
-    // the supplier's frame.
+    // On the worker: the check of the flag and `stop`; its error when stopped, else the supplier's
+    // frame.
     [[nodiscard]] Result<const AVFrame*> frameOnWorker(std::int64_t index, std::stop_token stop);
 
     std::mutex post_mutex_;              // orders posting against the stop flag
     std::atomic<bool> stopping_{false};  // the stop flag
-    StopCheck stop_;                     // the flag or stopFfmpegSources()
     std::atomic<std::size_t> queued_{0};
     media::FrameDesc desc_;
     std::unique_ptr<IFrameSupplier> supplier_;  // declared before pool_: destroyed after it

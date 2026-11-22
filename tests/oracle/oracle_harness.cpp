@@ -209,7 +209,7 @@ Result<std::vector<std::byte>> OracleHarness::originalBytes(std::string_view uri
     Result<std::vector<std::byte>> bytes;
     {
         auto read = syncWait(store_->acquireOriginal({id, index},
-                                                     {.api = media::Api::HostPlanes,
+                                                     {.binding = media::HOST_PLANES,
                                                       .domain = store_->hostDomain(),
                                                       .fidelity = media::OriginalFidelity::Exact},
                                                      *cpu_));
