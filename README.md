@@ -37,7 +37,7 @@ An application links the umbrella target `dvv::components` and calls
 `dvv_link_enabled_components()`, which links every enabled component library as a whole archive,
 so its components and modules register:
 
-    find_package(dvv_components 0.4 REQUIRED)   # or dvv_components in-tree
+    find_package(dvv_components 0.5 REQUIRED)   # or dvv_components in-tree
     target_link_libraries(my_app PRIVATE dvv::components)
     dvv_link_enabled_components(my_app)
 
