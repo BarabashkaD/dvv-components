@@ -6,6 +6,11 @@ the dvv rules: compatible = the same 0.minor and at least the minimum version; a
 unused API is removed in the next 0.x minor, with no deprecation period. This file is the release
 notes (there are no GitHub Releases).
 
+## [0.8.0] - 2026-11-26
+
+### Changed
+- Requires dvv-media 0.7.0. No API change.
+
 ## [0.7.0] - 2026-11-26
 
 ### Changed
